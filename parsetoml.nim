@@ -617,27 +617,45 @@ proc setArrayVal(val : TomlValueRef, numOfElems : int = 0) =
 ################################################################################
 
 proc advanceToNextNestLevel(state : ParserState,
-                            curTablePtr : var TomlTableRef, 
+                            curTableRef : var TomlTableRef, 
                             tableName : string) =
 
-    let target = (curTablePtr[])[tableName]
+    let target = (curTableRef[])[tableName]
     case target.kind
     of kindTable:
-        curTablePtr = target.tableVal
+        curTableRef = target.tableVal
     of kindArray:
         let arr = target.arrayVal[high(target.arrayVal)]
         if arr.kind != kindTable:
             raise(newTomlError(state, "\"" & tableName & 
                                   "\" elements are not tables"))
-        curTablePtr = arr.tableVal
+        curTableRef = arr.tableVal
     else:
         raise(newTomlError(state, "\"" & tableName & 
                            "\" is not a table"))
 
 ################################################################################
 
+# This function is called by the TOML parser whenever a
+# "[[table.name]]" line is encountered in the parsing process. Its
+# purpose is to make sure that all the parent nodes in "table.name"
+# exist and are tables, and that a terminal node of the correct type
+# is created.
+#
+# Starting from "curTableRef" (which is usually the root object),
+# traverse the object tree following the names in "tableNames" and
+# create a new TomlValueRef object of kind "kindArray" at the terminal
+# node. This array is going to be an array of tables: the function
+# will create an element and will make "curTableRef" reference it.
+# Example: if tableNames == ["a", "b", "c"], the code will look for
+# the "b" table that is child of "a", and then it will check if "c" is
+# a child of "b". If it is, it must be an array of tables, and a new
+# element will be appended. Otherwise, a new "c" array is created, and
+# an empty table element is added in "c". In either cases, curTableRef
+# will refer to the last element of "c".
+
 proc createOrAppendTableArrayDef(state : ParserState,
-                                 curTablePtr : var TomlTableRef,
+                                 curTableRef : var TomlTableRef,
                                  tableNames : seq[string]) =
 
     # This is a table array entry (e.g. "[[entry]]")
@@ -645,7 +663,7 @@ proc createOrAppendTableArrayDef(state : ParserState,
         let lastTableInChain = idx == high(tableNames)
 
         var newValue : TomlValueRef
-        if not hasKey(curTablePtr[], tableName):
+        if not hasKey(curTableRef[], tableName):
             # If this element does not exist, create it
             new(newValue)
 
@@ -658,19 +676,19 @@ proc createOrAppendTableArrayDef(state : ParserState,
                 new(newValue.arrayVal[0])
                 setEmptyTableVal(newValue.arrayVal[0])
 
-                (curTablePtr[])[tableName] = newValue
-                curTablePtr = newValue.arrayVal[0].tableVal
+                (curTableRef[])[tableName] = newValue
+                curTableRef = newValue.arrayVal[0].tableVal
             else:
                 setEmptyTableVal(newValue)
 
                 # Add the newly created object to the current table
-                (curTablePtr[])[tableName] = newValue
+                (curTableRef[])[tableName] = newValue
 
                 # Update the pointer to the current table
-                curTablePtr = newValue.tableVal
+                curTableRef = newValue.tableVal
         else:
             # The element exissts: is it of the right type?
-            let target = (curTablePtr[])[tableName]
+            let target = (curTableRef[])[tableName]
 
             if lastTableInChain:
                 if target.kind != kindArray:
@@ -681,31 +699,38 @@ proc createOrAppendTableArrayDef(state : ParserState,
                 new(newValue)
                 setEmptyTableVal(newValue)
                 target.arrayVal.add(newValue)
-                curTablePtr = newValue.tableVal
+                curTableRef = newValue.tableVal
             else:
-                advanceToNextNestLevel(state, curTablePtr, tableName)
+                advanceToNextNestLevel(state, curTableRef, tableName)
 
 ################################################################################
 
+# Starting from "curTableRef" (which is usually the root object),
+# traverse the object tree following the names in "tableNames" and
+# create a new TomlValueRef object of kind "kindTable" at the terminal
+# node. Example: if tableNames == ["a", "b", "c"], the code will look
+# for the "b" table that is child of "a" and it will create a new
+# table "c" which is "b"'s children.
+
 proc createTableDef(state : ParserState,
-                    curTablePtr : var TomlTableRef,
+                    curTableRef : var TomlTableRef,
                     tableNames : seq[string]) =
 
     var newValue : TomlValueRef
 
     # This starts a new table (e.g. "[table]")
     for tableName in tableNames:
-        if not hasKey(curTablePtr[], tableName):
+        if not hasKey(curTableRef[], tableName):
             new(newValue)
             setEmptyTableVal(newValue)
 
             # Add the newly created object to the current table
-            (curTablePtr[])[tableName] = newValue
+            (curTableRef[])[tableName] = newValue
 
             # Update the pointer to the current table
-            curTablePtr = newValue.tableVal
+            curTableRef = newValue.tableVal
         else:
-            advanceToNextNestLevel(state, curTablePtr, tableName)
+            advanceToNextNestLevel(state, curTableRef, tableName)
 
 ################################################################################
 
@@ -717,9 +742,9 @@ proc parseStream*(inputStream : streams.Stream,
 
     # This pointer will always point to the table that should get new
     # key/value pairs found in the TOML file during parsing
-    var curTablePtr = result
+    var curTableRef = result
 
-    # Unlike "curTablePtr", this pointer never changes: it always
+    # Unlike "curTableRef", this pointer never changes: it always
     # points to the uppermost table in the tree
     let baseTable = result
 
@@ -729,9 +754,9 @@ proc parseStream*(inputStream : streams.Stream,
         case nextChar
         of '[':
             # A new section/table begins. We'll have to start again
-            # from the uppermost level, so let's rewind curTablePtr to
+            # from the uppermost level, so let's rewind curTableRef to
             # the root node
-            curTablePtr = baseTable
+            curTableRef = baseTable
 
             # First, decompose the table name into its part (e.g.,
             # "a.b.c" -> ["a", "b", "c"])
@@ -744,10 +769,18 @@ proc parseStream*(inputStream : streams.Stream,
                 state.pushBackChar(nextChar)
                 tableNames = state.parseTableName(BracketType.single)
 
+            # Now create the proper (empty) data structure: either a
+            # table or an array of tables. Note that both functions
+            # update the "curTableRef" variable: they have to, since
+            # the TOML specification says that any "key = value"
+            # statement that follows is a child of the table we're
+            # defining right now, and we use "curTableRef" as a
+            # reference to the table that gets every next key/value
+            # definition.
             if isTableArrayDef:
-                createOrAppendTableArrayDef(state, curTablePtr, tableNames)
+                createOrAppendTableArrayDef(state, curTableRef, tableNames)
             else:
-                createTableDef(state, curTablePtr, tableNames)
+                createTableDef(state, curTableRef, tableNames)
 
         of '=':
             raise(newTomlError(state, "key name missing"))
@@ -760,7 +793,7 @@ proc parseStream*(inputStream : streams.Stream,
             # Everything else marks the presence of a "key = value" pattern
             state.pushBackChar(nextChar)
             let keyValuePair = state.parseKeyValuePair()
-            (curTablePtr[])[keyValuePair.key] = keyValuePair.value
+            (curTableRef[])[keyValuePair.key] = keyValuePair.value
 
 ################################################################################
 
@@ -831,8 +864,16 @@ proc newNoneValue() : TomlValueRef =
     new(result)
     result.kind = kindNone
 
-proc getValueFromFullAddr(table : TomlTableRef, 
-                          fullAddr : string) : TomlValueRef =
+################################################################################
+
+# Given a TOML table reference and a string address, return a
+# reference to the value in the table. Addresses are of the form
+# "a.b.c.d", where all but the last element in the dot-separated
+# string are tables. Arrays can be indexed by using the form "a.NNN",
+# where NNN is an integer number.
+
+proc getValueFromFullAddr*(table : TomlTableRef, 
+                           fullAddr : string) : TomlValueRef =
 
     let fieldNames = strutils.split(fullAddr, '.')
     echo strutils.join(fieldNames, ", ")
@@ -841,6 +882,9 @@ proc getValueFromFullAddr(table : TomlTableRef,
     var curNode : TomlValueRef
     for idx, curFieldName in fieldNames:
         let isLast = idx == len(fieldNames)
+
+        if not curTable.hasKey(curFieldName):
+            return newNoneValue()
 
         curNode = curTable[curFieldName]
         if not isLast:
