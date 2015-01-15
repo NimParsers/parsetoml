@@ -820,7 +820,28 @@ proc dump*(table : TomlTable, indentLevel : int = 0) =
 
 ################################################################################
 
+proc getValueFromFullAddr(table : TomlTable, 
+                          fullAddr : string) : TomlValueRef =
+
+    let fieldNames = strutils.split(fullAddr, '.')
+    echo strutils.join(fieldNames, ", ")
+
+################################################################################
+
 when isMainModule:
+
+    template assertEq(T1 : expr, T2 : expr) =
+        bind instantiationInfo
+        mixin failedAssertImpl
+        when compileOption("assertions"):
+            {.line.}:
+                let val1 = T1
+                let val2 = T2
+                if not (val1 == val2):
+                    failedAssertImpl(astToStr(T1) & " != " & astToStr(T2) &
+                                     " (" & 
+                                     $(val1) & " != " & $(val2) & ')')
+
 
     # Here come a few tests
 
@@ -842,33 +863,33 @@ ab c
 de"""))
         assert(s.line == 1 and s.column == 1)
 
-        assert(s.getNextChar() == 'a')
+        assertEq(s.getNextChar(), 'a')
         assert(s.line == 1 and s.column == 2)
 
-        assert(s.getNextChar() == 'b')
+        assertEq(s.getNextChar(), 'b')
         assert(s.line == 1 and s.column == 3)
 
-        assert(s.getNextChar() == ' ')
+        assertEq(s.getNextChar(), ' ')
         assert(s.line == 1 and s.column == 4)
 
-        assert(s.getNextChar() == 'c')
+        assertEq(s.getNextChar(), 'c')
         assert(s.line == 1 and s.column == 5)
 
         # Let's add some juice to this boring test...
         s.pushBackChar('d')
-        assert(s.getNextChar() == 'd')
+        assertEq(s.getNextChar(), 'd')
         assert(s.line == 1 and s.column == 5)
 
-        assert(s.getNextChar() == '\l')
+        assertEq(s.getNextChar(), '\l')
         assert(s.line == 2 and s.column == 1)
 
-        assert(s.getNextChar() == 'd')
+        assertEq(s.getNextChar(), 'd')
         assert(s.line == 2 and s.column == 2)
 
-        assert(s.getNextChar() == 'e')
+        assertEq(s.getNextChar(), 'e')
         assert(s.line == 2 and s.column == 3)
 
-        assert(s.getNextChar() == '\0')
+        assertEq(s.getNextChar(), '\0')
 
     ########################################
     # getNextNonWhitespace
@@ -878,28 +899,28 @@ de"""))
 
         assert(s.line == 1 and s.column == 1)
 
-        assert(s.getNextNonWhitespace(skipNoLf) == 'a')
+        assertEq(s.getNextNonWhitespace(skipNoLf), 'a')
         assert(s.line == 1 and s.column == 2)
 
-        assert(s.getNextNonWhitespace(skipNoLf) == 'b')
+        assertEq(s.getNextNonWhitespace(skipNoLf), 'b')
         assert(s.line == 1 and s.column == 3)
 
-        assert(s.getNextNonWhitespace(skipNoLf) == 'c')
+        assertEq(s.getNextNonWhitespace(skipNoLf), 'c')
         assert(s.line == 1 and s.column == 5)
 
-        assert(s.getNextNonWhitespace(skipNoLf) == 'd')
+        assertEq(s.getNextNonWhitespace(skipNoLf), 'd')
         assert(s.line == 1 and s.column == 7)
 
-        assert(s.getNextNonWhitespace(skipNoLf) == '\l')
+        assertEq(s.getNextNonWhitespace(skipNoLf), '\l')
         assert(s.line == 2 and s.column == 1)
 
-        assert(s.getNextNonWhitespace(skipNoLf) == 'e')
+        assertEq(s.getNextNonWhitespace(skipNoLf), 'e')
         assert(s.line == 2 and s.column == 2)
 
-        assert(s.getNextNonWhitespace(skipNoLf) == 'f')
+        assertEq(s.getNextNonWhitespace(skipNoLf), 'f')
         assert(s.line == 2 and s.column == 3)
 
-        assert(s.getNextNonWhitespace(skipNoLf) == '\0')
+        assertEq(s.getNextNonWhitespace(skipNoLf), '\0')
 
 
     block:
@@ -907,73 +928,73 @@ de"""))
 
         assert(s.line == 1 and s.column == 1)
 
-        assert(s.getNextNonWhitespace(skipLf) == 'a')
+        assertEq(s.getNextNonWhitespace(skipLf), 'a')
         assert(s.line == 1 and s.column == 2)
 
-        assert(s.getNextNonWhitespace(skipLf) == 'b')
+        assertEq(s.getNextNonWhitespace(skipLf), 'b')
         assert(s.line == 1 and s.column == 3)
 
-        assert(s.getNextNonWhitespace(skipLf) == 'c')
+        assertEq(s.getNextNonWhitespace(skipLf), 'c')
         assert(s.line == 1 and s.column == 5)
 
-        assert(s.getNextNonWhitespace(skipLf) == 'd')
+        assertEq(s.getNextNonWhitespace(skipLf), 'd')
         assert(s.line == 1 and s.column == 7)
 
-        assert(s.getNextNonWhitespace(skipLf) == 'e')
+        assertEq(s.getNextNonWhitespace(skipLf), 'e')
         assert(s.line == 2 and s.column == 2)
 
-        assert(s.getNextNonWhitespace(skipLf) == 'f')
+        assertEq(s.getNextNonWhitespace(skipLf), 'f')
         assert(s.line == 2 and s.column == 3)
 
-        assert(s.getNextNonWhitespace(skipLf) == '\0')
+        assertEq(s.getNextNonWhitespace(skipLf), '\0')
 
     ########################################
     # charToInt
 
-    assert(charToInt('0', base10) == 0)
-    assert(charToInt('1', base10) == 1)
-    assert(charToInt('2', base10) == 2)
-    assert(charToInt('3', base10) == 3)
-    assert(charToInt('4', base10) == 4)
-    assert(charToInt('5', base10) == 5)
-    assert(charToInt('6', base10) == 6)
-    assert(charToInt('7', base10) == 7)
-    assert(charToInt('8', base10) == 8)
-    assert(charToInt('9', base10) == 9)
+    assertEq(charToInt('0', base10), 0)
+    assertEq(charToInt('1', base10), 1)
+    assertEq(charToInt('2', base10), 2)
+    assertEq(charToInt('3', base10), 3)
+    assertEq(charToInt('4', base10), 4)
+    assertEq(charToInt('5', base10), 5)
+    assertEq(charToInt('6', base10), 6)
+    assertEq(charToInt('7', base10), 7)
+    assertEq(charToInt('8', base10), 8)
+    assertEq(charToInt('9', base10), 9)
 
-    assert(charToInt('0', base16) == 0)
-    assert(charToInt('1', base16) == 1)
-    assert(charToInt('2', base16) == 2)
-    assert(charToInt('3', base16) == 3)
-    assert(charToInt('4', base16) == 4)
-    assert(charToInt('5', base16) == 5)
-    assert(charToInt('6', base16) == 6)
-    assert(charToInt('7', base16) == 7)
-    assert(charToInt('8', base16) == 8)
-    assert(charToInt('9', base16) == 9)
-    assert(charToInt('a', base16) == 10)
-    assert(charToInt('b', base16) == 11)
-    assert(charToInt('c', base16) == 12)
-    assert(charToInt('d', base16) == 13)
-    assert(charToInt('e', base16) == 14)
-    assert(charToInt('f', base16) == 15)
-    assert(charToInt('A', base16) == 10)
-    assert(charToInt('B', base16) == 11)
-    assert(charToInt('C', base16) == 12)
-    assert(charToInt('D', base16) == 13)
-    assert(charToInt('E', base16) == 14)
-    assert(charToInt('F', base16) == 15)
+    assertEq(charToInt('0', base16), 0)
+    assertEq(charToInt('1', base16), 1)
+    assertEq(charToInt('2', base16), 2)
+    assertEq(charToInt('3', base16), 3)
+    assertEq(charToInt('4', base16), 4)
+    assertEq(charToInt('5', base16), 5)
+    assertEq(charToInt('6', base16), 6)
+    assertEq(charToInt('7', base16), 7)
+    assertEq(charToInt('8', base16), 8)
+    assertEq(charToInt('9', base16), 9)
+    assertEq(charToInt('a', base16), 10)
+    assertEq(charToInt('b', base16), 11)
+    assertEq(charToInt('c', base16), 12)
+    assertEq(charToInt('d', base16), 13)
+    assertEq(charToInt('e', base16), 14)
+    assertEq(charToInt('f', base16), 15)
+    assertEq(charToInt('A', base16), 10)
+    assertEq(charToInt('B', base16), 11)
+    assertEq(charToInt('C', base16), 12)
+    assertEq(charToInt('D', base16), 13)
+    assertEq(charToInt('E', base16), 14)
+    assertEq(charToInt('F', base16), 15)
 
     ########################################
     # parseInt
 
     block:
         var s = newParserState(newStringStream("1063"))
-        assert(parseInt(s, base10) == 1063)
+        assertEq(parseInt(s, base10), 1063)
 
     block:
         var s = newParserState(newStringStream("fFa05B"))
-        assert(parseInt(s, base16) == 16752731)
+        assertEq(parseInt(s, base16), 16752731)
 
     ########################################
     # parseDecimalPart
@@ -982,7 +1003,7 @@ de"""))
         var s = newParserState(newStringStream("24802"))
         # The result should be 0.24802. We check it using integer
         # arithmetic, instead of using the |x - x_expected| < eps...
-        assert(int(100000 * parseDecimalPart(s)) == 24802)
+        assertEq(int(100000 * parseDecimalPart(s)), 24802)
 
     ########################################
     # parseSingleLineString
@@ -1016,7 +1037,7 @@ de"""))
         var s = newParserState(newStringStream("1, 2, 3, 4]blah"))
         let arr = parseArray(s)
 
-        assert arr.len() == 4
+        assertEq(arr.len(), 4)
         assert arr[0].kind == kindInt and arr[0].intVal == 1
         assert arr[1].kind == kindInt and arr[1].intVal == 2
         assert arr[2].kind == kindInt and arr[2].intVal == 3
@@ -1026,7 +1047,7 @@ de"""))
         var s = newParserState(newStringStream("\"a\", \"bb\", \"ccc\"]blah"))
         let arr = parseArray(s)
 
-        assert arr.len() == 3
+        assertEq(arr.len(), 3)
         assert arr[0].kind == kindString and arr[0].stringVal == "a"
         assert arr[1].kind == kindString and arr[1].stringVal == "bb"
         assert arr[2].kind == kindString and arr[2].stringVal == "ccc"
@@ -1040,6 +1061,9 @@ de"""))
             assert false # If we reach this, there's something wrong
         except TomlError:
             discard # That's expected
+
+    ########################################
+    # Arrays of tables (they're tricky to implement!)
 
     try:
         let table = parseString("""
@@ -1056,35 +1080,34 @@ str_value = "This is a test"
 hello_there = 1.0e+2
 """)
 
-        assert table.len() == 4
-
-        assert table["alone"].kind == kindInt
-        assert table["alone"].intVal == 1
+        assertEq(table.len(), 4)
+        assertEq(table["alone"].kind, kindInt)
+        assertEq(table["alone"].intVal, 1)
 
         block:
-            assert table["input"].kind == kindTable
+            assertEq(table["input"].kind, kindTable)
             let inputTable = table["input"].tableVal
-            assert inputTable.len() == 1
-            assert inputTable["flags"].kind == kindBool
-            assert inputTable["flags"].boolVal == true
+            assertEq(inputTable.len(), 1)
+            assertEq(inputTable["flags"].kind, kindBool)
+            assertEq(inputTable["flags"].boolVal, true)
 
         block:
-            assert table["output"].kind == kindTable
+            assertEq(table["output"].kind, kindTable)
             let outputTable = table["output"].tableVal
-            assert outputTable.len() == 2
-            assert outputTable["int_value"].kind == kindInt
-            assert outputTable["int_value"].intVal == 6
-            assert outputTable["str_value"].kind == kindString
-            assert outputTable["str_value"].stringVal == "This is a test"
+            assertEq(outputTable.len(), 2)
+            assertEq(outputTable["int_value"].kind, kindInt)
+            assertEq(outputTable["int_value"].intVal, 6)
+            assertEq(outputTable["str_value"].kind, kindString)
+            assertEq(outputTable["str_value"].stringVal, "This is a test")
 
         block:
-            assert table["deeply"].kind == kindTable
+            assertEq(table["deeply"].kind, kindTable)
             let deeplyTable = table["deeply"].tableVal
-            assert deeplyTable["nested"].kind == kindTable
+            assertEq(deeplyTable["nested"].kind, kindTable)
             let nestedTable = deeplyTable["nested"].tableVal
-            assert nestedTable.len() == 1
-            assert nestedTable["hello_there"].kind == kindFloat
-            assert nestedTable["hello_there"].floatVal == 100.0
+            assertEq(nestedTable.len(), 1)
+            assertEq(nestedTable["hello_there"].kind, kindFloat)
+            assertEq(nestedTable["hello_there"].floatVal, 100.0)
 
     except TomlError:
         let loc = (ref TomlError)(getCurrentException()).location
@@ -1112,22 +1135,35 @@ hello_there = 1.0e+2
     name = "plantain"
 """)
 
-        assert table.len() == 1
-        assert table["fruit"].kind == kindArray
+        assertEq(table.len(), 1)
+        assertEq(table["fruit"].kind, kindArray)
+        assertEq(table["fruit"].arrayVal[0].kind, kindTable)
+        assertEq(table["fruit"].arrayVal[0].tableVal.len(), 3)
+        assertEq(table["fruit"].arrayVal[0].tableVal["name"].kind, kindString)
+        assertEq(table["fruit"].arrayVal[0].tableVal["name"].stringVal, "apple")
+        assertEq(table["fruit"].arrayVal[0].tableVal["physical"].kind, kindTable)
+        assertEq(table["fruit"].arrayVal[0].tableVal["variety"].kind, kindArray)
 
-        assert table["fruit"].arrayVal[0].kind == kindTable
-        assert table["fruit"].arrayVal[0].tableVal.len() == 3
+        block:
+            let varietyTable = table["fruit"].arrayVal[0].tableVal["variety"].arrayVal
+            assertEq(varietyTable.len(), 2)
+            assertEq(varietyTable[0].kind, kindTable)
+            assertEq(varietyTable[0].tableVal["name"].kind, kindString)
+            assertEq(varietyTable[0].tableVal["name"].stringVal, "red delicious")
+            assertEq(varietyTable[1].kind, kindTable)
+            assertEq(varietyTable[1].tableVal["name"].kind, kindString)
+            assertEq(varietyTable[1].tableVal["name"].stringVal, "granny smith")
 
-        assert table["fruit"].arrayVal[0].tableVal["name"].kind == kindString
-        assert table["fruit"].arrayVal[0].tableVal["name"].stringVal == "apple"
+        assertEq(table["fruit"].arrayVal[1].kind, kindTable)
+        assertEq(table["fruit"].arrayVal[1].tableVal.len(), 2)
 
-        assert table["fruit"].arrayVal[0].tableVal["physical"].kind == kindTable
-        assert table["fruit"].arrayVal[0].tableVal["variety"].kind == kindArray
+        assertEq(table["fruit"].arrayVal[1].tableVal["name"].kind, kindString)
+        assertEq(table["fruit"].arrayVal[1].tableVal["name"].stringVal, "banana")
+        assertEq(table["fruit"].arrayVal[1].tableVal["variety"].kind, kindArray)
 
-        assert table["fruit"].arrayVal[1].kind == kindTable
-        assert table["fruit"].arrayVal[1].tableVal.len() == 2
-
-        assert table["fruit"].arrayVal[1].tableVal["name"].kind == kindString
-        assert table["fruit"].arrayVal[1].tableVal["name"].stringVal == "banana"
-        assert table["fruit"].arrayVal[1].tableVal["variety"].kind == kindArray
-        
+        block:
+            let varietyTable = table["fruit"].arrayVal[1].tableVal["variety"].arrayVal
+            assertEq(varietyTable.len(), 1)
+            assertEq(varietyTable[0].kind, kindTable)
+            assertEq(varietyTable[0].tableVal["name"].kind, kindString)
+            assertEq(varietyTable[0].tableVal["name"].stringVal, "plantain")
