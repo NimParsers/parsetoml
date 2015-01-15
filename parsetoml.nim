@@ -28,6 +28,7 @@ import unsigned
 
 type
     TomlValueKind* = enum
+        kindNone
         kindInt,
         kindFloat,
         kindBool,
@@ -47,17 +48,19 @@ type
         zoneMinuteShift : int
 
     TomlTable* = OrderedTable[string, TomlValueRef]
+    TomlTableRef* = ref TomlTable
 
     TomlValueRef* = ref TomlValue
     TomlValue* = object
         case kind : TomlValueKind
+        of kindNone: nil
         of kindInt: intVal : int64
         of kindFloat: floatVal : float64
         of kindBool: boolVal : bool
         of kindDatetime: datetimeVal : TomlDateTime
         of kindString: stringVal : string
         of kindArray: arrayVal : seq[TomlValueRef]
-        of kindTable: tableVal : TomlTable
+        of kindTable: tableVal : TomlTableRef
 
     ParserState = object
         fileName : string
@@ -602,7 +605,8 @@ proc newParserState(s : streams.Stream, fileName : string = "") : ParserState =
 
 proc setEmptyTableVal(val : TomlValueRef) =
     val.kind = kindTable
-    val.tableVal = initOrderedTable[string, TomlValueRef]()
+    new(val.tableVal)
+    val.tableVal[] = initOrderedTable[string, TomlValueRef]()
 
 ################################################################################
 
@@ -613,19 +617,19 @@ proc setArrayVal(val : TomlValueRef, numOfElems : int = 0) =
 ################################################################################
 
 proc advanceToNextNestLevel(state : ParserState,
-                            curTablePtr : var ptr TomlTable, 
+                            curTablePtr : var TomlTableRef, 
                             tableName : string) =
 
     let target = (curTablePtr[])[tableName]
     case target.kind
     of kindTable:
-        curTablePtr = addr(target.tableVal)
+        curTablePtr = target.tableVal
     of kindArray:
         let arr = target.arrayVal[high(target.arrayVal)]
         if arr.kind != kindTable:
             raise(newTomlError(state, "\"" & tableName & 
                                   "\" elements are not tables"))
-        curTablePtr = addr(arr.tableVal)
+        curTablePtr = arr.tableVal
     else:
         raise(newTomlError(state, "\"" & tableName & 
                            "\" is not a table"))
@@ -633,7 +637,7 @@ proc advanceToNextNestLevel(state : ParserState,
 ################################################################################
 
 proc createOrAppendTableArrayDef(state : ParserState,
-                                 curTablePtr : var ptr TomlTable,
+                                 curTablePtr : var TomlTableRef,
                                  tableNames : seq[string]) =
 
     # This is a table array entry (e.g. "[[entry]]")
@@ -655,7 +659,7 @@ proc createOrAppendTableArrayDef(state : ParserState,
                 setEmptyTableVal(newValue.arrayVal[0])
 
                 (curTablePtr[])[tableName] = newValue
-                curTablePtr = addr(newValue.arrayVal[0].tableVal)
+                curTablePtr = newValue.arrayVal[0].tableVal
             else:
                 setEmptyTableVal(newValue)
 
@@ -663,7 +667,7 @@ proc createOrAppendTableArrayDef(state : ParserState,
                 (curTablePtr[])[tableName] = newValue
 
                 # Update the pointer to the current table
-                curTablePtr = addr(newValue.tableVal)
+                curTablePtr = newValue.tableVal
         else:
             # The element exissts: is it of the right type?
             let target = (curTablePtr[])[tableName]
@@ -677,14 +681,14 @@ proc createOrAppendTableArrayDef(state : ParserState,
                 new(newValue)
                 setEmptyTableVal(newValue)
                 target.arrayVal.add(newValue)
-                curTablePtr = addr(newValue.tableVal)
+                curTablePtr = newValue.tableVal
             else:
                 advanceToNextNestLevel(state, curTablePtr, tableName)
 
 ################################################################################
 
 proc createTableDef(state : ParserState,
-                    curTablePtr : var ptr TomlTable,
+                    curTablePtr : var TomlTableRef,
                     tableNames : seq[string]) =
 
     var newValue : TomlValueRef
@@ -699,24 +703,25 @@ proc createTableDef(state : ParserState,
             (curTablePtr[])[tableName] = newValue
 
             # Update the pointer to the current table
-            curTablePtr = addr(newValue.tableVal)
+            curTablePtr = newValue.tableVal
         else:
             advanceToNextNestLevel(state, curTablePtr, tableName)
 
 ################################################################################
 
 proc parseStream*(inputStream : streams.Stream,
-                  fileName : string = "") : TomlTable =
+                  fileName : string = "") : TomlTableRef =
     var state = newParserState(inputStream, fileName)
-    result = initOrderedTable[string, TomlValueRef]()
+    new(result)
+    result[] = initOrderedTable[string, TomlValueRef]()
 
     # This pointer will always point to the table that should get new
     # key/value pairs found in the TOML file during parsing
-    var curTablePtr = addr result
+    var curTablePtr = result
 
     # Unlike "curTablePtr", this pointer never changes: it always
     # points to the uppermost table in the tree
-    let baseTable = addr result
+    let baseTable = result
 
     var nextChar : char
     while true:
@@ -759,19 +764,19 @@ proc parseStream*(inputStream : streams.Stream,
 
 ################################################################################
 
-proc parseString*(tomlStr : string, fileName : string = "") : TomlTable =
+proc parseString*(tomlStr : string, fileName : string = "") : TomlTableRef =
     let strStream = newStringStream(tomlStr)
     result = parseStream(strStream, fileName)
 
 ################################################################################
 
-proc parseFile*(f : File, fileName : string = "") : TomlTable =
+proc parseFile*(f : File, fileName : string = "") : TomlTableRef =
     let fStream = newFileStream(f)
     result = parseStream(fStream, fileName)
 
 ################################################################################
 
-proc parseFile*(fileName : string) : TomlTable =
+proc parseFile*(fileName : string) : TomlTableRef =
     let fStream = newFileStream(fileName, fmRead)
     result = parseStream(fStream, fileName)
 
@@ -784,6 +789,8 @@ proc `$`*(val : TomlDateTime) : string =
 
 proc `$`*(val : TomlValue) : string =
     case val.kind
+    of kindNone:
+        result = "none()"
     of kindInt: 
         result = "int(" & $val.intVal & ")"
     of kindFloat: 
@@ -805,7 +812,7 @@ proc `$`*(val : TomlValue) : string =
 ################################################################################
 
 # This function is mostly useful for debugging purposes
-proc dump*(table : TomlTable, indentLevel : int = 0) =
+proc dump*(table : TomlTableRef, indentLevel : int = 0) =
     let space = repeatStr(indentLevel, " ")
     for key, val in pairs(table):
         if val.kind == kindTable:
@@ -820,11 +827,29 @@ proc dump*(table : TomlTable, indentLevel : int = 0) =
 
 ################################################################################
 
-proc getValueFromFullAddr(table : TomlTable, 
+proc newNoneValue() : TomlValueRef =
+    new(result)
+    result.kind = kindNone
+
+proc getValueFromFullAddr(table : TomlTableRef, 
                           fullAddr : string) : TomlValueRef =
 
     let fieldNames = strutils.split(fullAddr, '.')
     echo strutils.join(fieldNames, ", ")
+
+    var curTable : ref TomlTable = table
+    var curNode : TomlValueRef
+    for idx, curFieldName in fieldNames:
+        let isLast = idx == len(fieldNames)
+
+        curNode = curTable[curFieldName]
+        if not isLast:
+            if curNode.kind != kindTable:
+                return newNoneValue()
+            
+            curTable = curNode.tableVal
+
+    result = curNode
 
 ################################################################################
 
@@ -841,7 +866,6 @@ when isMainModule:
                     failedAssertImpl(astToStr(T1) & " != " & astToStr(T2) &
                                      " (" & 
                                      $(val1) & " != " & $(val2) & ')')
-
 
     # Here come a few tests
 
