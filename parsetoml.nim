@@ -38,39 +38,39 @@ type
         kindTable
 
     TomlDateTime* = object
-        year : int
-        month : int
-        day : int
-        hour : int
-        minute : int
-        second : int
-        zoneHourShift : int
-        zoneMinuteShift : int
+        year* : int
+        month* : int
+        day* : int
+        hour* : int
+        minute* : int
+        second* : int
+        zoneHourShift* : int
+        zoneMinuteShift* : int
 
     TomlTable* = OrderedTable[string, TomlValueRef]
     TomlTableRef* = ref TomlTable
 
     TomlValueRef* = ref TomlValue
     TomlValue* = object
-        case kind : TomlValueKind
+        case kind* : TomlValueKind
         of kindNone: nil
-        of kindInt: intVal : int64
-        of kindFloat: floatVal : float64
-        of kindBool: boolVal : bool
-        of kindDatetime: datetimeVal : TomlDateTime
-        of kindString: stringVal : string
-        of kindArray: arrayVal : seq[TomlValueRef]
-        of kindTable: tableVal : TomlTableRef
+        of kindInt: intVal* : int64
+        of kindFloat: floatVal* : float64
+        of kindBool: boolVal* : bool
+        of kindDatetime: dateTimeVal* : TomlDateTime
+        of kindString: stringVal* : string
+        of kindArray: arrayVal* : seq[TomlValueRef]
+        of kindTable: tableVal* : TomlTableRef
 
     ParserState = object
-        fileName : string
-        line : int
-        column : int
+        fileName* : string
+        line* : int
+        column* : int
         pushback : char
-        stream : streams.Stream
+        stream* : streams.Stream
 
-    TomlError = object of Exception
-        location : ParserState
+    TomlError* = object of Exception
+        location* : ParserState
 
     NumberBase = enum
         base10, base16
@@ -159,7 +159,13 @@ proc charToInt(c : char, base : NumberBase) : int {. inline, noSideEffect .} =
 
 ################################################################################
 
-proc parseInt(state : var ParserState, base : NumberBase) : int64 =
+type
+    LeadingChar {. pure .} = enum
+        AllowZero, DenyZero
+
+proc parseInt(state : var ParserState, 
+              base : NumberBase, 
+              leadingChar : LeadingChar) : int64 =
     var nextChar : char
     var firstPos = true
     var negative = false
@@ -179,7 +185,7 @@ proc parseInt(state : var ParserState, base : NumberBase) : int64 =
             if nextChar == '-': negative = true
             continue
 
-        if nextChar == '0' and firstPos:
+        if nextChar == '0' and firstPos and leadingChar == LeadingChar.DenyZero:
             # TOML specifications forbid this
             raise(newTomlError(state,
                                "leading zeroes are not allowed in integers"))
@@ -224,7 +230,7 @@ proc stringDelimiter(kind : StringType) : char {. inline, noSideEffect .} =
 ################################################################################
 
 proc parseUnicode(state : var ParserState) : string =
-    let code = parseInt(state, base16)
+    let code = parseInt(state, base16, LeadingChar.AllowZero)
     if code < 0:
         raise(newTomlError(state, "negative Unicode codepoint"))
 
@@ -440,6 +446,102 @@ proc parseArray(state : var ParserState) : seq[TomlValueRef] =
 
 ################################################################################
 
+proc parseIntAndCheckBounds(state : var ParserState, 
+                            minVal : int,
+                            maxVal : int,
+                            msg : string) : int =
+    result = int(parseInt(state, base10, LeadingChar.AllowZero))
+    if result < minVal or result > maxVal:
+        raise(newTomlError(state, msg & " (" & $result & ")"))
+
+proc parseDateTimePart(state : var ParserState,
+                       dateTime : var TomlDateTime) =
+
+    # This function is called whenever a datetime object is found. They follow
+    # an ISO convention and can use one of the following format:
+    #
+    # - YYYY-MM-DDThh:mm:ss[+-]hh:mm
+    # - YYYY-MM-DDThh:mm:ssZ
+    #
+    # where the "T" and "Z" letters are literals, [+-] indicates
+    # *either* "+" or "-", YYYY is the 4-digit year, MM is the 2-digit
+    # month, DD is the 2-digit day, hh is the 2-digit hour, mm is the
+    # 2-digit minute, and ss is the 2-digit second. The hh:mm after
+    # the +/- character is the timezone; a literal "Z" indicates the
+    # local timezone.
+
+    # This function assumes that the "YYYY-" part has already been
+    # parsed (this happens because during parsing, finding a 4-digit
+    # number like "YYYY" might just indicate the presence of an
+    # integer or a floating-point number; it's the following "-" that
+    # tells the parser that the value is a datetime). As a consequence
+    # of this, we assume that "dateTime.year" has already been set.
+
+    var nextChar : char
+
+    # Parse the month
+    dateTime.month = parseIntAndCheckBounds(state, 1, 12, 
+                                            "invalid number for the month")
+
+    nextChar = state.getNextChar()
+    if nextChar != '-':
+        raise(newTomlError(state, "\"-\" expected after the month number"))
+
+    # Parse the day
+    dateTime.day = parseIntAndCheckBounds(state, 1, 31, 
+                                          "invalid number for the day")
+
+    nextChar = state.getNextChar()
+    if nextChar notin {'t', 'T'}:
+        raise(newTomlError(state, "\"T\" expected after the day number"))
+
+    # Parse the hour
+    dateTime.hour = parseIntAndCheckBounds(state, 0, 23, 
+                                           "invalid number of hours")
+
+    nextChar = state.getNextChar()
+    if nextChar != ':':
+        raise(newTomlError(state, "\":\" expected after the number of hours"))
+
+    # Parse the minutes
+    dateTime.minute = parseIntAndCheckBounds(state, 0, 59, 
+                                             "invalid number of minutes")
+
+    nextChar = state.getNextChar()
+    if nextChar != ':':
+        raise(newTomlError(state, 
+                           "\":\" expected after the number of seconds"))
+
+    # Parse the second. Note that seconds=60 *can* happen (leap second)
+    dateTime.second = parseIntAndCheckBounds(state, 0, 60, "invalid second")
+
+    nextChar = state.getNextChar()
+    case nextChar
+    of 'z', 'Z':
+        # Local time
+        dateTime.zoneHourShift = 0
+        dateTime.zoneMinuteShift = 0
+    of '+', '-':
+        dateTime.zoneHourShift = 
+            parseIntAndCheckBounds(state, 0, 23,
+                                   "invalid number of hours")
+        if nextChar == '-':
+            dateTime.zoneHourShift *= -1
+
+        nextChar = state.getNextChar()
+        if nextChar != ':':
+            raise(newTomlError(state, 
+                               "\":\" expected after the number of hours"))
+
+        dateTime.zoneMinuteShift = 
+            parseIntAndCheckBounds(state, 0, 59,
+                                   "invalid number of minutes")
+    else:
+        raise(newTomlError(state, "unexpected character \"" & nextChar &
+                           "\" instead of the time zone"))
+
+################################################################################
+
 proc pow10(x : float64, pow : int64) : float64 {. inline .} =
     if pow == 0:
         result = x
@@ -462,15 +564,16 @@ proc parseValue(state : var ParserState) : TomlValueRef =
     of strutils.Digits:
         state.pushBackChar(nextChar)
 
-        # We can either have an integer or a float
-        let intPart = parseInt(state, base10)
+        # We can either have an integer, a float or a datetime
+        let intPart = parseInt(state, base10, LeadingChar.DenyZero)
         nextChar = state.getNextChar()
-        if nextChar == '.':
+        case nextChar
+        of '.':
             let decimalPart = parseDecimalPart(state)
             nextChar = state.getNextChar()
             var exponent : int64 = 0
             if nextChar in {'e', 'E'}:
-                exponent = parseInt(state, base10)
+                exponent = parseInt(state, base10, LeadingChar.AllowZero)
             else:
                 state.pushBackChar(nextChar)
 
@@ -478,6 +581,18 @@ proc parseValue(state : var ParserState) : TomlValueRef =
                               exponent)
             result = TomlValueRef(kind: kindFloat,
                                   floatVal: value)
+        of '-':
+            # This might be a datetime object
+            var val : TomlDateTime
+            val.year = int(intPart)
+            # We assume a year has 4 digits
+            if val.year < 1000 or val.year > 9999:
+                raise(newTomlError(state, "invalid year (" & $val.year & ")"))
+
+            parseDateTimePart(state, val)
+
+            result = TomlValueRef(kind: kindDateTime,
+                                  dateTimeVal: val)
         else:
             state.pushBackChar(nextChar)
             result = TomlValueRef(kind: kindInt,
@@ -598,7 +713,8 @@ proc parseKeyValuePair(state : var ParserState) : TomlKeyValue =
 
 ################################################################################
 
-proc newParserState(s : streams.Stream, fileName : string = "") : ParserState =
+proc newParserState(s : streams.Stream, 
+                    fileName : string = "") : ParserState =
     result = ParserState(fileName: fileName, line: 1, column: 1, stream: s)
 
 ################################################################################
@@ -1058,11 +1174,25 @@ de"""))
 
     block:
         var s = newParserState(newStringStream("1063"))
-        assertEq(parseInt(s, base10), 1063)
+        assertEq(parseInt(s, base10, LeadingChar.DenyZero), 1063)
 
     block:
         var s = newParserState(newStringStream("fFa05B"))
-        assertEq(parseInt(s, base16), 16752731)
+        assertEq(parseInt(s, base16, LeadingChar.DenyZero), 16752731)
+
+    block:
+        var s = newParserState(newStringStream("01063"))
+
+        try:
+            discard parseInt(s, base10, LeadingChar.DenyZero)
+            assert false, "An exception should have been raised here!"
+        except:
+            discard
+
+    block:
+        var s = newParserState(newStringStream("01063"))
+
+        assertEq(parseInt(s, base10, LeadingChar.AllowZero), 1063)
 
     ########################################
     # parseDecimalPart
@@ -1072,6 +1202,55 @@ de"""))
         # The result should be 0.24802. We check it using integer
         # arithmetic, instead of using the |x - x_expected| < eps...
         assertEq(int(100000 * parseDecimalPart(s)), 24802)
+
+
+    ########################################
+    # parseDateTimePart
+
+    block:
+        # We do not include the "YYYY-" part, see the implementation
+        # of "praseDateTime" to know why
+        var s = newParserState(newStringStream("12-06T11:34:01+13:24"))
+        var value : TomlDateTime
+        parseDateTimePart(s, value)
+
+        assertEq(value.month, 12)
+        assertEq(value.day, 6)
+        assertEq(value.hour, 11)
+        assertEq(value.minute, 34)
+        assertEq(value.second, 01)
+        assertEq(value.zoneHourShift, 13)
+        assertEq(value.zoneMinuteShift, 24)
+
+    block:
+        # We do not include the "YYYY-" part, see the implementation
+        # of "praseDateTime" to know why
+        var s = newParserState(newStringStream("12-06T11:34:01Z"))
+        var value : TomlDateTime
+        parseDateTimePart(s, value)
+
+        assertEq(value.month, 12)
+        assertEq(value.day, 6)
+        assertEq(value.hour, 11)
+        assertEq(value.minute, 34)
+        assertEq(value.second, 01)
+        assertEq(value.zoneHourShift, 0)
+        assertEq(value.zoneMinuteShift, 0)
+
+    block:
+        # We do not include the "YYYY-" part, see the implementation
+        # of "praseDateTime" to know why
+        var s = newParserState(newStringStream("12-06T11:34:01-13:24"))
+        var value : TomlDateTime
+        parseDateTimePart(s, value)
+
+        assertEq(value.month, 12)
+        assertEq(value.day, 6)
+        assertEq(value.hour, 11)
+        assertEq(value.minute, 34)
+        assertEq(value.second, 01)
+        assertEq(value.zoneHourShift, -13)
+        assertEq(value.zoneMinuteShift, 24)
 
     ########################################
     # parseSingleLineString
@@ -1235,3 +1414,5 @@ hello_there = 1.0e+2
             assertEq(varietyTable[0].kind, kindTable)
             assertEq(varietyTable[0].tableVal["name"].kind, kindString)
             assertEq(varietyTable[0].tableVal["name"].stringVal, "plantain")
+
+        echo getValueFromFullAddr(table, "fruit")[]
