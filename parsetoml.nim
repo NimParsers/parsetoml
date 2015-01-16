@@ -1009,7 +1009,6 @@ proc getValueFromFullAddr*(table : TomlTableRef,
                 # Within this "try..except" statement we do not check
                 # for errors
                 let index = strutils.parseInt(indexStr)
-                let arrayElement = curTable[arrayName].arrayVal[index]
                 curNode = curTable[arrayName].arrayVal[index]
             except:
                 return newNoneValue()
@@ -1027,6 +1026,33 @@ proc getValueFromFullAddr*(table : TomlTableRef,
                 return newNoneValue()
 
     result = curNode
+
+################################################################################
+
+template defineGetProc(name : expr,
+                       kindVal : TomlValueKind, 
+                       field : expr, 
+                       t : typeDesc) =
+    proc name*(table : TomlTableRef, 
+               address : string) : t =
+        let node = table.getValueFromFullAddr(address)
+        if node.kind == kindVal:
+            result = node.field
+        else:
+            raise(newException(KeyError, "key \"" & address & "\" not found"))
+
+template defineGetProcDefault(name : expr,
+                              t : typeDesc) =
+    proc name*(table : TomlTableRef, 
+               address : string,
+               default : t) : t =
+        try:
+            result = name(table, address)
+        except KeyError:
+            result = default
+
+defineGetProc(getString, kindString, stringVal, string)
+defineGetProcDefault(getString, string)
 
 ################################################################################
 
@@ -1449,3 +1475,17 @@ hello_there = 1.0e+2
         # Dangling dot
         let node = getValueFromFullAddr(fruitTable, "fruit[0].")
         assertEq(node.kind, kindNone)
+
+    ########################################
+    # getString
+
+    assertEq(fruitTable.getString("fruit[0].name"), "apple")
+    assertEq(fruitTable.getString("fruit[0].physical.shape"), "round")
+
+    try:
+        assertEq(fruitTable.getString("fruit[0].this_does_not_exist"), "")
+        assert false, "We should have never reached this line!"
+    except:
+        discard
+
+    assertEq(fruitTable.getString("fruit[0].color", "yellow"), "yellow")
