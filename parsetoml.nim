@@ -1067,6 +1067,42 @@ defineGetProcDefault(getString, string)
 
 ################################################################################
 
+template defineGetArray(name : expr, 
+                        kindVal : TomlValueKind, 
+                        field : expr, 
+                        t : typeDesc) =
+    proc name*(table : TomlTableRef, 
+               address : string) : seq[t] =
+        let node = table.getValueFromFullAddr(address)
+        case node.kind
+        of kindNone:
+            raise(newException(KeyError, "key \"" & address & "\" not found"))
+        of kindArray:
+            let arr = node.arrayVal
+            if arr.len() == 0:
+                result = newSeq[t](0)
+                return
+
+            if arr[0].kind != kindVal:
+                raise(newException(KeyError, "the array elements of \"" & 
+                                             address & 
+                                             "\" have the wrong type (" &
+                                             $kindVal & ")"))
+
+            result = newSeq[t](len(arr))
+            for idx, elem in arr:
+                result[idx] = elem.field
+        else:
+            raise(newException(KeyError, "key \"" & address & 
+                                         "\" is not an array"))
+
+defineGetArray(getIntArray, kindInt, intVal, int64)
+defineGetArray(getFloatArray, kindFloat, floatVal, float64)
+defineGetArray(getBoolArray, kindBool, boolVal, bool)
+defineGetArray(getStringArray, kindString, stringVal, string)
+
+################################################################################
+
 when isMainModule:
 
     template assertEq(T1 : expr, T2 : expr) =
@@ -1500,3 +1536,27 @@ hello_there = 1.0e+2
         discard
 
     assertEq(fruitTable.getString("fruit[0].color", "yellow"), "yellow")
+
+    ########################################
+    # get??Array
+
+    let arrayTable = parseString("""
+intArr = [1, 2, 3, 4, 5]
+floatArr = [10.0, 11.0, 12.0, 13.0]
+boolArr = [false, true]
+stringArr = ["foo", "bar", "baz"]
+""")
+
+    template checkGetArrayFunc(keyName : string,
+                               funcName : expr, 
+                               reference : expr) =
+        let arr = arrayTable.funcName(keyName)
+
+        assertEq(len(arr), len(reference))
+        for idx in countup(low(arr), high(arr)):
+            assertEq(arr[idx], reference[idx])
+
+    checkGetArrayFunc("intArr", getIntArray, [1, 2, 3, 4, 5])
+    checkGetArrayFunc("floatArr", getFloatArray, [10.0, 11.0, 12.0, 13.0])
+    checkGetArrayFunc("boolArr", getBoolArray, [false, true])
+    checkGetArrayFunc("stringArr", getStringArray, ["foo", "bar", "baz"])
