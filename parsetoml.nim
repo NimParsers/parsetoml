@@ -1051,7 +1051,14 @@ template defineGetProcDefault(name : expr,
         except KeyError:
             result = default
 
+defineGetProc(getInt, kindInt, intVal, int64)
+defineGetProc(getFloat, kindFloat, floatVal, float64)
+defineGetProc(getBool, kindBool, boolVal, bool)
 defineGetProc(getString, kindString, stringVal, string)
+
+defineGetProcDefault(getInt, int64)
+defineGetProcDefault(getFloat, float64)
+defineGetProcDefault(getBool, bool)
 defineGetProcDefault(getString, string)
 
 ################################################################################
