@@ -985,29 +985,46 @@ proc newNoneValue() : TomlValueRef =
 # Given a TOML table reference and a string address, return a
 # reference to the value in the table. Addresses are of the form
 # "a.b.c.d", where all but the last element in the dot-separated
-# string are tables. Arrays can be indexed by using the form "a.NNN",
-# where NNN is an integer number.
+# string are tables. Elements in table arrays are indicated by the
+# form "a[NNN]", where NNN is an integer number.
 
 proc getValueFromFullAddr*(table : TomlTableRef, 
                            fullAddr : string) : TomlValueRef =
 
     let fieldNames = strutils.split(fullAddr, '.')
-    echo strutils.join(fieldNames, ", ")
 
     var curTable : ref TomlTable = table
     var curNode : TomlValueRef
     for idx, curFieldName in fieldNames:
-        let isLast = idx == len(fieldNames)
+        let isLast = idx == high(fieldNames)
 
-        if not curTable.hasKey(curFieldName):
-            return newNoneValue()
-
-        curNode = curTable[curFieldName]
-        if not isLast:
-            if curNode.kind != kindTable:
+        # Check if this name is a reference to an array element (e.g., "a[2]")
+        let indexPos = curFieldName.find("[")
+        if indexPos > 0 and curFieldName.endsWith("]"):
+            # This is the name of the array
+            let arrayName = curFieldName[0..indexPos-1]
+            # This is the index within the square brackets
+            let indexStr = curFieldName[indexPos+1..len(curFieldName)-2]
+            try:
+                # Within this "try..except" statement we do not check
+                # for errors
+                let index = strutils.parseInt(indexStr)
+                let arrayElement = curTable[arrayName].arrayVal[index]
+                curNode = curTable[arrayName].arrayVal[index]
+            except:
                 return newNoneValue()
-            
-            curTable = curNode.tableVal
+        else:
+            if not curTable.hasKey(curFieldName):
+                return newNoneValue()
+
+            curNode = curTable[curFieldName]
+
+        if not isLast:
+            case curNode.kind
+            of kindTable:
+                curTable = curNode.tableVal
+            else:
+                return newNoneValue()
 
     result = curNode
 
@@ -1360,8 +1377,7 @@ hello_there = 1.0e+2
         let loc = (ref TomlError)(getCurrentException()).location
         echo loc.filename & ":" & $(loc.line) & ":" & $(loc.column) & ":" & getCurrentExceptionMsg()
 
-    block:
-        let table = parseString("""
+    let fruitTable = parseString("""
 [[fruit]]
   name = "apple"
 
@@ -1382,37 +1398,54 @@ hello_there = 1.0e+2
     name = "plantain"
 """)
 
-        assertEq(table.len(), 1)
-        assertEq(table["fruit"].kind, kindArray)
-        assertEq(table["fruit"].arrayVal[0].kind, kindTable)
-        assertEq(table["fruit"].arrayVal[0].tableVal.len(), 3)
-        assertEq(table["fruit"].arrayVal[0].tableVal["name"].kind, kindString)
-        assertEq(table["fruit"].arrayVal[0].tableVal["name"].stringVal, "apple")
-        assertEq(table["fruit"].arrayVal[0].tableVal["physical"].kind, kindTable)
-        assertEq(table["fruit"].arrayVal[0].tableVal["variety"].kind, kindArray)
+    assertEq(fruitTable.len(), 1)
+    assertEq(fruitTable["fruit"].kind, kindArray)
+    assertEq(fruitTable["fruit"].arrayVal[0].kind, kindTable)
+    assertEq(fruitTable["fruit"].arrayVal[0].tableVal.len(), 3)
+    assertEq(fruitTable["fruit"].arrayVal[0].tableVal["name"].kind, kindString)
+    assertEq(fruitTable["fruit"].arrayVal[0].tableVal["name"].stringVal, "apple")
+    assertEq(fruitTable["fruit"].arrayVal[0].tableVal["physical"].kind, kindTable)
+    assertEq(fruitTable["fruit"].arrayVal[0].tableVal["variety"].kind, kindArray)
 
-        block:
-            let varietyTable = table["fruit"].arrayVal[0].tableVal["variety"].arrayVal
-            assertEq(varietyTable.len(), 2)
-            assertEq(varietyTable[0].kind, kindTable)
-            assertEq(varietyTable[0].tableVal["name"].kind, kindString)
-            assertEq(varietyTable[0].tableVal["name"].stringVal, "red delicious")
-            assertEq(varietyTable[1].kind, kindTable)
-            assertEq(varietyTable[1].tableVal["name"].kind, kindString)
-            assertEq(varietyTable[1].tableVal["name"].stringVal, "granny smith")
+    block:
+        let varietyTable = fruitTable["fruit"].arrayVal[0].tableVal["variety"].arrayVal
+        assertEq(varietyTable.len(), 2)
+        assertEq(varietyTable[0].kind, kindTable)
+        assertEq(varietyTable[0].tableVal["name"].kind, kindString)
+        assertEq(varietyTable[0].tableVal["name"].stringVal, "red delicious")
+        assertEq(varietyTable[1].kind, kindTable)
+        assertEq(varietyTable[1].tableVal["name"].kind, kindString)
+        assertEq(varietyTable[1].tableVal["name"].stringVal, "granny smith")
 
-        assertEq(table["fruit"].arrayVal[1].kind, kindTable)
-        assertEq(table["fruit"].arrayVal[1].tableVal.len(), 2)
+    assertEq(fruitTable["fruit"].arrayVal[1].kind, kindTable)
+    assertEq(fruitTable["fruit"].arrayVal[1].tableVal.len(), 2)
 
-        assertEq(table["fruit"].arrayVal[1].tableVal["name"].kind, kindString)
-        assertEq(table["fruit"].arrayVal[1].tableVal["name"].stringVal, "banana")
-        assertEq(table["fruit"].arrayVal[1].tableVal["variety"].kind, kindArray)
+    assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].kind, kindString)
+    assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].stringVal, "banana")
+    assertEq(fruitTable["fruit"].arrayVal[1].tableVal["variety"].kind, kindArray)
 
-        block:
-            let varietyTable = table["fruit"].arrayVal[1].tableVal["variety"].arrayVal
-            assertEq(varietyTable.len(), 1)
-            assertEq(varietyTable[0].kind, kindTable)
-            assertEq(varietyTable[0].tableVal["name"].kind, kindString)
-            assertEq(varietyTable[0].tableVal["name"].stringVal, "plantain")
+    block:
+        let varietyTable = fruitTable["fruit"].arrayVal[1].tableVal["variety"].arrayVal
+        assertEq(varietyTable.len(), 1)
+        assertEq(varietyTable[0].kind, kindTable)
+        assertEq(varietyTable[0].tableVal["name"].kind, kindString)
+        assertEq(varietyTable[0].tableVal["name"].stringVal, "plantain")
 
-        echo getValueFromFullAddr(table, "fruit")[]
+
+    ########################################
+    # getValueFromFullAddr
+
+    block:
+        let node = getValueFromFullAddr(fruitTable, "fruit[1].variety[0].name")
+        assertEq(node.kind, kindString)
+        assertEq(node.stringVal, "plantain")
+
+    block:
+        # Wrong index
+        let node = getValueFromFullAddr(fruitTable, "fruit[3]")
+        assertEq(node.kind, kindNone)
+
+    block:
+        # Dangling dot
+        let node = getValueFromFullAddr(fruitTable, "fruit[0].")
+        assertEq(node.kind, kindNone)
