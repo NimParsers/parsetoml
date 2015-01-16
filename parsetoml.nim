@@ -1036,10 +1036,14 @@ template defineGetProc(name : expr,
     proc name*(table : TomlTableRef, 
                address : string) : t =
         let node = table.getValueFromFullAddr(address)
+        if node.kind == kindNone:
+            raise(newException(KeyError, "key \"" & address & "\" not found"))
+
         if node.kind == kindVal:
             result = node.field
         else:
-            raise(newException(KeyError, "key \"" & address & "\" not found"))
+            raise(newException(KeyError, "key \"" & address & 
+                                         "\" has the wrong type"))
 
 template defineGetProcDefault(name : expr,
                               t : typeDesc) =
