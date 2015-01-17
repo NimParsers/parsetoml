@@ -1,13 +1,15 @@
 # NimToml
 
-NimToml is a Nim library to parse TOML files
-(https://github.com/toml-lang/toml).
+Parsetoml is a Nim library to parse TOML files
+(https://github.com/toml-lang/toml). Currently it supports
+[v0.3.1](https://github.com/toml-lang/toml/commit/bbada44e8c6d00e964cd6ca5b178507a34dcbe70)
+of the TOML specification.
 
 ## Installation
 
 Use ``nimble`` to install it:
 
-    nimble install NimToml
+    nimble install parsetoml
 
 ## Usage
 
@@ -20,34 +22,29 @@ import NimToml
 There are several functions that can parse TOML content:
 
 `````nim
-let table1 = NimToml.parseString(""""
+let table1 = parsetoml.parseString(""""
 [input]
 file_name = "test.txt"
 
 [output]
 verbose = true
 """)
-let table2 = NimToml.parseFile(f)
-let table3 = NimToml.parseFile("test.toml")
+let table2 = parsetoml.parseFile(f)
+let table3 = parsetoml.parseFile("test.toml")
 `````
 
-The return value of ``parseString`` and ``parseFile`` is a
-``NimToml.Table`` object, which can be either interrogated for
-specific values or walked:
+The return value of ``parseString`` and ``parseFile`` is a ``TomlTableRef``
+object. Several functions are available to query for specific fields; here is
+an example:
 
 `````nim
-# Get just one value:
-let verboseFlag = NimToml.getBool(table1, "output.verbose")
+# Get the value, or fail if it is not found
+let verboseFlag = parsetoml.getBool(table1, "output.verbose")
 
-# Iterate over all the values
-for i in NimToml.iter(table1):
-    print NimToml.getKey(i)
-
-# The same, but run over all the table levels
-# for i in NimToml.deepIter(table1):
-    print NimToml.getKey(i)
+# You can specify a default as well
+let input = parsetoml.getString(table1, "input.file_name", "dummy.txt")
 `````
 
 ## License
 
-NimToml is released under a MIT license.
+Parsetoml is released under a MIT license.
