@@ -276,7 +276,7 @@ proc parseEscapeChar(state : var ParserState, escape : char) : string =
     case escape
     of 'b': result = "\b"
     of 't': result = "\t"
-    of 'n': result = "\n"
+    of 'n': result = "\l"
     of 'f': result = "\f"
     of 'r': result = "\r"
     of '\'': result = "\'"
