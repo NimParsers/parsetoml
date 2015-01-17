@@ -30,15 +30,15 @@ import tables
 import unsigned
 
 type
-    TomlValueKind* = enum
-        kindNone
-        kindInt,
-        kindFloat,
-        kindBool,
-        kindDatetime,
-        kindString,
-        kindArray,
-        kindTable
+    TomlValueKind* {. pure .} = enum
+        None
+        Int,
+        Float,
+        Bool,
+        Datetime,
+        String,
+        Array,
+        Table
 
     TomlDateTime* = object
         year* : int
@@ -56,14 +56,14 @@ type
     TomlValueRef* = ref TomlValue
     TomlValue* = object
         case kind* : TomlValueKind
-        of kindNone: nil
-        of kindInt: intVal* : int64
-        of kindFloat: floatVal* : float64
-        of kindBool: boolVal* : bool
-        of kindDatetime: dateTimeVal* : TomlDateTime
-        of kindString: stringVal* : string
-        of kindArray: arrayVal* : seq[TomlValueRef]
-        of kindTable: tableVal* : TomlTableRef
+        of TomlValueKind.None: nil
+        of TomlValueKind.Int: intVal* : int64
+        of TomlValueKind.Float: floatVal* : float64
+        of TomlValueKind.Bool: boolVal* : bool
+        of TomlValueKind.Datetime: dateTimeVal* : TomlDateTime
+        of TomlValueKind.String: stringVal* : string
+        of TomlValueKind.Array: arrayVal* : seq[TomlValueRef]
+        of TomlValueKind.Table: tableVal* : TomlTableRef
 
     ParserState = object
         fileName* : string
@@ -582,7 +582,7 @@ proc parseValue(state : var ParserState) : TomlValueRef =
 
             let value = pow10(float64(intPart) + decimalPart,
                               exponent)
-            result = TomlValueRef(kind: kindFloat,
+            result = TomlValueRef(kind: TomlValueKind.Float,
                                   floatVal: value)
         of '-':
             # This might be a datetime object
@@ -594,11 +594,11 @@ proc parseValue(state : var ParserState) : TomlValueRef =
 
             parseDateTimePart(state, val)
 
-            result = TomlValueRef(kind: kindDateTime,
+            result = TomlValueRef(kind: TomlValueKind.DateTime,
                                   dateTimeVal: val)
         else:
             state.pushBackChar(nextChar)
-            result = TomlValueRef(kind: kindInt,
+            result = TomlValueRef(kind: TomlValueKind.Int,
                                   intVal: intPart)
 
     of 't':
@@ -608,7 +608,7 @@ proc parseValue(state : var ParserState) : TomlValueRef =
            state.getNextChar() != 'u' or
            state.getNextChar() != 'e':
             raise(newTomlError(oldState, "unknown identifier"))
-        result = TomlValueRef(kind: kindBool, boolVal: true)
+        result = TomlValueRef(kind: TomlValueKind.Bool, boolVal: true)
 
     of 'f':
         # Is this "false"?
@@ -618,21 +618,21 @@ proc parseValue(state : var ParserState) : TomlValueRef =
            state.getNextChar() != 's' or
            state.getNextChar() != 'e':
             raise(newTomlError(oldState, "unknown identifier"))
-        result = TomlValueRef(kind: kindBool, boolVal: false)
+        result = TomlValueRef(kind: TomlValueKind.Bool, boolVal: false)
 
     of '\"':
         # A basic string (accepts \ escape codes)
-        result = TomlValueRef(kind: kindString,
+        result = TomlValueRef(kind: TomlValueKind.String,
                               stringVal: parseString(state, StringType.Basic))
 
     of '\'':
         # A literal string (does not accept \ escape codes)
-        result = TomlValueRef(kind: kindString,
+        result = TomlValueRef(kind: TomlValueKind.String,
                               stringVal: parseString(state, StringType.Literal))
 
     of '[':
         # An array
-        result = TomlValueRef(kind: kindArray,
+        result = TomlValueRef(kind: TomlValueKind.Array,
                               arrayVal: parseArray(state))
 
     else:
@@ -728,14 +728,14 @@ proc newParserState(s : streams.Stream,
 ################################################################################
 
 proc setEmptyTableVal(val : TomlValueRef) =
-    val.kind = kindTable
+    val.kind = TomlValueKind.Table
     new(val.tableVal)
     val.tableVal[] = initOrderedTable[string, TomlValueRef]()
 
 ################################################################################
 
 proc setArrayVal(val : TomlValueRef, numOfElems : int = 0) =
-    val.kind = kindArray
+    val.kind = TomlValueKind.Array
     val.arrayVal = newSeq[TomlValueRef](numOfElems)
 
 ################################################################################
@@ -746,11 +746,11 @@ proc advanceToNextNestLevel(state : ParserState,
 
     let target = (curTableRef[])[tableName]
     case target.kind
-    of kindTable:
+    of TomlValueKind.Table:
         curTableRef = target.tableVal
-    of kindArray:
+    of TomlValueKind.Array:
         let arr = target.arrayVal[high(target.arrayVal)]
-        if arr.kind != kindTable:
+        if arr.kind != TomlValueKind.Table:
             raise(newTomlError(state, "\"" & tableName & 
                                   "\" elements are not tables"))
         curTableRef = arr.tableVal
@@ -768,15 +768,15 @@ proc advanceToNextNestLevel(state : ParserState,
 #
 # Starting from "curTableRef" (which is usually the root object),
 # traverse the object tree following the names in "tableNames" and
-# create a new TomlValueRef object of kind "kindArray" at the terminal
-# node. This array is going to be an array of tables: the function
-# will create an element and will make "curTableRef" reference it.
-# Example: if tableNames == ["a", "b", "c"], the code will look for
-# the "b" table that is child of "a", and then it will check if "c" is
-# a child of "b". If it is, it must be an array of tables, and a new
-# element will be appended. Otherwise, a new "c" array is created, and
-# an empty table element is added in "c". In either cases, curTableRef
-# will refer to the last element of "c".
+# create a new TomlValueRef object of kind "TomlValueKind.Array" at
+# the terminal node. This array is going to be an array of tables: the
+# function will create an element and will make "curTableRef"
+# reference it. Example: if tableNames == ["a", "b", "c"], the code
+# will look for the "b" table that is child of "a", and then it will
+# check if "c" is a child of "b". If it is, it must be an array of
+# tables, and a new element will be appended. Otherwise, a new "c"
+# array is created, and an empty table element is added in "c". In
+# either cases, curTableRef will refer to the last element of "c".
 
 proc createOrAppendTableArrayDef(state : ParserState,
                                  curTableRef : var TomlTableRef,
@@ -815,7 +815,7 @@ proc createOrAppendTableArrayDef(state : ParserState,
             let target = (curTableRef[])[tableName]
 
             if lastTableInChain:
-                if target.kind != kindArray:
+                if target.kind != TomlValueKind.Array:
                     raise(newTomlError(state, "\"" & tableName &
                                               " is not an array"))
 
@@ -831,10 +831,10 @@ proc createOrAppendTableArrayDef(state : ParserState,
 
 # Starting from "curTableRef" (which is usually the root object),
 # traverse the object tree following the names in "tableNames" and
-# create a new TomlValueRef object of kind "kindTable" at the terminal
-# node. Example: if tableNames == ["a", "b", "c"], the code will look
-# for the "b" table that is child of "a" and it will create a new
-# table "c" which is "b"'s children.
+# create a new TomlValueRef object of kind "TomlValueKind.Table" at
+# the terminal node. Example: if tableNames == ["a", "b", "c"], the
+# code will look for the "b" table that is child of "a" and it will
+# create a new table "c" which is "b"'s children.
 
 proc createTableDef(state : ParserState,
                     curTableRef : var TomlTableRef,
@@ -946,24 +946,24 @@ proc `$`*(val : TomlDateTime) : string =
 
 proc `$`*(val : TomlValue) : string =
     case val.kind
-    of kindNone:
+    of TomlValueKind.None:
         result = "none()"
-    of kindInt: 
+    of TomlValueKind.Int: 
         result = "int(" & $val.intVal & ")"
-    of kindFloat: 
+    of TomlValueKind.Float: 
         result = "float(" & $val.floatVal & ")"
-    of kindBool: 
+    of TomlValueKind.Bool: 
         result = "boolean(" & $val.boolVal & ")"
-    of kindDatetime: 
+    of TomlValueKind.Datetime: 
         result = "datetime(" & $val.datetimeVal & ")"
-    of kindString: 
+    of TomlValueKind.String: 
         result = "string(\"" & $val.stringVal & "\")"
-    of kindArray: 
+    of TomlValueKind.Array: 
         result = "array("
         for elem in val.arrayVal:
             result.add($(elem[]))
         result.add(")")
-    of kindTable: 
+    of TomlValueKind.Table: 
         result = "table(" & $(len(val.tableVal)) & " elements)"
     
 ################################################################################
@@ -972,10 +972,11 @@ proc `$`*(val : TomlValue) : string =
 proc dump*(table : TomlTableRef, indentLevel : int = 0) =
     let space = repeatStr(indentLevel, " ")
     for key, val in pairs(table):
-        if val.kind == kindTable:
+        if val.kind == TomlValueKind.Table:
             echo space & key & " = table"
             dump(val.tableVal, indentLevel + 4)
-        elif val.kind == kindArray and val.arrayVal[0].kind == kindTable:
+        elif (val.kind == TomlValueKind.Array and 
+              val.arrayVal[0].kind == TomlValueKind.Table):
             for idx, val in val.arrayVal:
                 echo space & key & "[" & $idx & "] = table"
                 dump(val.tableVal, indentLevel + 4)
@@ -986,7 +987,7 @@ proc dump*(table : TomlTableRef, indentLevel : int = 0) =
 
 proc newNoneValue() : TomlValueRef =
     new(result)
-    result.kind = kindNone
+    result.kind = TomlValueKind.None
 
 ################################################################################
 
@@ -1028,7 +1029,7 @@ proc getValueFromFullAddr*(table : TomlTableRef,
 
         if not isLast:
             case curNode.kind
-            of kindTable:
+            of TomlValueKind.Table:
                 curTable = curNode.tableVal
             else:
                 return newNoneValue()
@@ -1044,7 +1045,7 @@ template defineGetProc(name : expr,
     proc name*(table : TomlTableRef, 
                address : string) : t =
         let node = table.getValueFromFullAddr(address)
-        if node.kind == kindNone:
+        if node.kind == TomlValueKind.None:
             raise(newException(KeyError, "key \"" & address & "\" not found"))
 
         if node.kind == kindVal:
@@ -1063,11 +1064,11 @@ template defineGetProcDefault(name : expr,
         except KeyError:
             result = default
 
-defineGetProc(getInt, kindInt, intVal, int64)
-defineGetProc(getFloat, kindFloat, floatVal, float64)
-defineGetProc(getBool, kindBool, boolVal, bool)
-defineGetProc(getString, kindString, stringVal, string)
-defineGetProc(getDateTime, kindDateTime, dateTimeVal, TomlDateTime)
+defineGetProc(getInt, TomlValueKind.Int, intVal, int64)
+defineGetProc(getFloat, TomlValueKind.Float, floatVal, float64)
+defineGetProc(getBool, TomlValueKind.Bool, boolVal, bool)
+defineGetProc(getString, TomlValueKind.String, stringVal, string)
+defineGetProc(getDateTime, TomlValueKind.DateTime, dateTimeVal, TomlDateTime)
 
 defineGetProcDefault(getInt, int64)
 defineGetProcDefault(getFloat, float64)
@@ -1084,9 +1085,9 @@ template defineGetArray(name : expr,
                address : string) : seq[t] =
         let node = table.getValueFromFullAddr(address)
         case node.kind
-        of kindNone:
+        of TomlValueKind.None:
             raise(newException(KeyError, "key \"" & address & "\" not found"))
-        of kindArray:
+        of TomlValueKind.Array:
             let arr = node.arrayVal
             if arr.len() == 0:
                 result = newSeq[t](0)
@@ -1105,11 +1106,12 @@ template defineGetArray(name : expr,
             raise(newException(KeyError, "key \"" & address & 
                                          "\" is not an array"))
 
-defineGetArray(getIntArray, kindInt, intVal, int64)
-defineGetArray(getFloatArray, kindFloat, floatVal, float64)
-defineGetArray(getBoolArray, kindBool, boolVal, bool)
-defineGetArray(getStringArray, kindString, stringVal, string)
-defineGetArray(getDateTimeArray, kindDateTime, dateTimeVal, TomlDateTime)
+defineGetArray(getIntArray, TomlValueKind.Int, intVal, int64)
+defineGetArray(getFloatArray, TomlValueKind.Float, floatVal, float64)
+defineGetArray(getBoolArray, TomlValueKind.Bool, boolVal, bool)
+defineGetArray(getStringArray, TomlValueKind.String, stringVal, string)
+defineGetArray(getDateTimeArray, TomlValueKind.DateTime, 
+               dateTimeVal, TomlDateTime)
 
 ################################################################################
 
@@ -1385,19 +1387,19 @@ de"""))
         let arr = parseArray(s)
 
         assertEq(arr.len(), 4)
-        assert arr[0].kind == kindInt and arr[0].intVal == 1
-        assert arr[1].kind == kindInt and arr[1].intVal == 2
-        assert arr[2].kind == kindInt and arr[2].intVal == 3
-        assert arr[3].kind == kindInt and arr[3].intVal == 4
+        assert arr[0].kind == TomlValueKind.Int and arr[0].intVal == 1
+        assert arr[1].kind == TomlValueKind.Int and arr[1].intVal == 2
+        assert arr[2].kind == TomlValueKind.Int and arr[2].intVal == 3
+        assert arr[3].kind == TomlValueKind.Int and arr[3].intVal == 4
 
     block:
         var s = newParserState(newStringStream("\"a\", \"bb\", \"ccc\"]blah"))
         let arr = parseArray(s)
 
         assertEq(arr.len(), 3)
-        assert arr[0].kind == kindString and arr[0].stringVal == "a"
-        assert arr[1].kind == kindString and arr[1].stringVal == "bb"
-        assert arr[2].kind == kindString and arr[2].stringVal == "ccc"
+        assert arr[0].kind == TomlValueKind.String and arr[0].stringVal == "a"
+        assert arr[1].kind == TomlValueKind.String and arr[1].stringVal == "bb"
+        assert arr[2].kind == TomlValueKind.String and arr[2].stringVal == "ccc"
 
     block:
         # Array elements of heterogeneous types are forbidden
@@ -1428,32 +1430,32 @@ hello_there = 1.0e+2
 """)
 
         assertEq(table.len(), 4)
-        assertEq(table["alone"].kind, kindInt)
+        assertEq(table["alone"].kind, TomlValueKind.Int)
         assertEq(table["alone"].intVal, 1)
 
         block:
-            assertEq(table["input"].kind, kindTable)
+            assertEq(table["input"].kind, TomlValueKind.Table)
             let inputTable = table["input"].tableVal
             assertEq(inputTable.len(), 1)
-            assertEq(inputTable["flags"].kind, kindBool)
+            assertEq(inputTable["flags"].kind, TomlValueKind.Bool)
             assertEq(inputTable["flags"].boolVal, true)
 
         block:
-            assertEq(table["output"].kind, kindTable)
+            assertEq(table["output"].kind, TomlValueKind.Table)
             let outputTable = table["output"].tableVal
             assertEq(outputTable.len(), 2)
-            assertEq(outputTable["int_value"].kind, kindInt)
+            assertEq(outputTable["int_value"].kind, TomlValueKind.Int)
             assertEq(outputTable["int_value"].intVal, 6)
-            assertEq(outputTable["str_value"].kind, kindString)
+            assertEq(outputTable["str_value"].kind, TomlValueKind.String)
             assertEq(outputTable["str_value"].stringVal, "This is a test")
 
         block:
-            assertEq(table["deeply"].kind, kindTable)
+            assertEq(table["deeply"].kind, TomlValueKind.Table)
             let deeplyTable = table["deeply"].tableVal
-            assertEq(deeplyTable["nested"].kind, kindTable)
+            assertEq(deeplyTable["nested"].kind, TomlValueKind.Table)
             let nestedTable = deeplyTable["nested"].tableVal
             assertEq(nestedTable.len(), 1)
-            assertEq(nestedTable["hello_there"].kind, kindFloat)
+            assertEq(nestedTable["hello_there"].kind, TomlValueKind.Float)
             assertEq(nestedTable["hello_there"].floatVal, 100.0)
 
     except TomlError:
@@ -1482,36 +1484,41 @@ hello_there = 1.0e+2
 """)
 
     assertEq(fruitTable.len(), 1)
-    assertEq(fruitTable["fruit"].kind, kindArray)
-    assertEq(fruitTable["fruit"].arrayVal[0].kind, kindTable)
+    assertEq(fruitTable["fruit"].kind, TomlValueKind.Array)
+    assertEq(fruitTable["fruit"].arrayVal[0].kind, TomlValueKind.Table)
     assertEq(fruitTable["fruit"].arrayVal[0].tableVal.len(), 3)
-    assertEq(fruitTable["fruit"].arrayVal[0].tableVal["name"].kind, kindString)
+    assertEq(fruitTable["fruit"].arrayVal[0].tableVal["name"].kind, 
+             TomlValueKind.String)
     assertEq(fruitTable["fruit"].arrayVal[0].tableVal["name"].stringVal, "apple")
-    assertEq(fruitTable["fruit"].arrayVal[0].tableVal["physical"].kind, kindTable)
-    assertEq(fruitTable["fruit"].arrayVal[0].tableVal["variety"].kind, kindArray)
+    assertEq(fruitTable["fruit"].arrayVal[0].tableVal["physical"].kind,
+             TomlValueKind.Table)
+    assertEq(fruitTable["fruit"].arrayVal[0].tableVal["variety"].kind, 
+             TomlValueKind.Array)
 
     block:
         let varietyTable = fruitTable["fruit"].arrayVal[0].tableVal["variety"].arrayVal
         assertEq(varietyTable.len(), 2)
-        assertEq(varietyTable[0].kind, kindTable)
-        assertEq(varietyTable[0].tableVal["name"].kind, kindString)
+        assertEq(varietyTable[0].kind, TomlValueKind.Table)
+        assertEq(varietyTable[0].tableVal["name"].kind, TomlValueKind.String)
         assertEq(varietyTable[0].tableVal["name"].stringVal, "red delicious")
-        assertEq(varietyTable[1].kind, kindTable)
-        assertEq(varietyTable[1].tableVal["name"].kind, kindString)
+        assertEq(varietyTable[1].kind, TomlValueKind.Table)
+        assertEq(varietyTable[1].tableVal["name"].kind, TomlValueKind.String)
         assertEq(varietyTable[1].tableVal["name"].stringVal, "granny smith")
 
-    assertEq(fruitTable["fruit"].arrayVal[1].kind, kindTable)
+    assertEq(fruitTable["fruit"].arrayVal[1].kind, TomlValueKind.Table)
     assertEq(fruitTable["fruit"].arrayVal[1].tableVal.len(), 2)
 
-    assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].kind, kindString)
+    assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].kind, 
+             TomlValueKind.String)
     assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].stringVal, "banana")
-    assertEq(fruitTable["fruit"].arrayVal[1].tableVal["variety"].kind, kindArray)
+    assertEq(fruitTable["fruit"].arrayVal[1].tableVal["variety"].kind, 
+             TomlValueKind.Array)
 
     block:
         let varietyTable = fruitTable["fruit"].arrayVal[1].tableVal["variety"].arrayVal
         assertEq(varietyTable.len(), 1)
-        assertEq(varietyTable[0].kind, kindTable)
-        assertEq(varietyTable[0].tableVal["name"].kind, kindString)
+        assertEq(varietyTable[0].kind, TomlValueKind.Table)
+        assertEq(varietyTable[0].tableVal["name"].kind, TomlValueKind.String)
         assertEq(varietyTable[0].tableVal["name"].stringVal, "plantain")
 
 
@@ -1520,18 +1527,18 @@ hello_there = 1.0e+2
 
     block:
         let node = getValueFromFullAddr(fruitTable, "fruit[1].variety[0].name")
-        assertEq(node.kind, kindString)
+        assertEq(node.kind, TomlValueKind.String)
         assertEq(node.stringVal, "plantain")
 
     block:
         # Wrong index
         let node = getValueFromFullAddr(fruitTable, "fruit[3]")
-        assertEq(node.kind, kindNone)
+        assertEq(node.kind, TomlValueKind.None)
 
     block:
         # Dangling dot
         let node = getValueFromFullAddr(fruitTable, "fruit[0].")
-        assertEq(node.kind, kindNone)
+        assertEq(node.kind, TomlValueKind.None)
 
     ########################################
     # getString
