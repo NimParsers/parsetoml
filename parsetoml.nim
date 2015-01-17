@@ -20,6 +20,9 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# parsetoml - Nim library to parse a TOML file
+# Main site: https://github.com/ziotom78/parsetoml
+
 import math
 import streams
 import strutils
@@ -638,15 +641,20 @@ proc parseValue(state : var ParserState) : TomlValueRef =
 
 ################################################################################
 
-proc parseName(state : var ParserState) : string =
+type
+    SpecialChars {. pure .} = enum
+        AllowNumberSign, DenyNumberSign
+
+proc parseName(state : var ParserState, 
+               numberSign : SpecialChars) : string =
     # This parses the name of a key or a table
     result = newStringOfCap(defaultStringCapacity)
 
     var nextChar : char
     while true:
         nextChar = state.getNextChar()
-        case nextChar
-        of '=', '#', '.', '[', ']', '\0', ' ':
+        if (nextChar in {'=', '.', '[', ']', '\0', ' '}) or
+           nextChar == '#' and numberSign == SpecialChars.DenyNumberSign:
             # Any of the above characters marks the end of the name
             state.pushBackChar(nextChar)
             break
@@ -665,7 +673,7 @@ proc parseTableName(state : var ParserState,
     result = newSeq[string](0)
 
     while true:
-        let partName = state.parseName()
+        let partName = state.parseName(SpecialChars.AllowNumberSign)
         result.add(partName)
 
         var nextChar = state.getNextChar()
@@ -696,7 +704,7 @@ type
     TomlKeyValue = tuple[key : string, value : TomlValueRef]
 
 proc parseKeyValuePair(state : var ParserState) : TomlKeyValue =
-    result.key = state.parseName()
+    result.key = state.parseName(SpecialChars.DenyNumberSign)
 
     var nextChar = state.getNextNonWhitespace(skipNoLf)
     if nextChar != '=':
