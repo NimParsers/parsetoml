@@ -6,4 +6,4 @@ description   = "Toml parser library for Nim"
 license       = "MIT"
 
 [Deps]
-Requires: "nim >= 0.10.0"
+Requires: "nim >= 0.10.2"
