@@ -1059,6 +1059,7 @@ defineGetProc(getInt, kindInt, intVal, int64)
 defineGetProc(getFloat, kindFloat, floatVal, float64)
 defineGetProc(getBool, kindBool, boolVal, bool)
 defineGetProc(getString, kindString, stringVal, string)
+defineGetProc(getDateTime, kindDateTime, dateTimeVal, TomlDateTime)
 
 defineGetProcDefault(getInt, int64)
 defineGetProcDefault(getFloat, float64)
@@ -1100,6 +1101,7 @@ defineGetArray(getIntArray, kindInt, intVal, int64)
 defineGetArray(getFloatArray, kindFloat, floatVal, float64)
 defineGetArray(getBoolArray, kindBool, boolVal, bool)
 defineGetArray(getStringArray, kindString, stringVal, string)
+defineGetArray(getDateTimeArray, kindDateTime, dateTimeVal, TomlDateTime)
 
 ################################################################################
 
@@ -1541,10 +1543,12 @@ hello_there = 1.0e+2
     # get??Array
 
     let arrayTable = parseString("""
+empty = []
 intArr = [1, 2, 3, 4, 5]
 floatArr = [10.0, 11.0, 12.0, 13.0]
 boolArr = [false, true]
 stringArr = ["foo", "bar", "baz"]
+dateTimeArr = [1978-02-07T01:02:03Z]
 """)
 
     template checkGetArrayFunc(keyName : string,
@@ -1556,7 +1560,17 @@ stringArr = ["foo", "bar", "baz"]
         for idx in countup(low(arr), high(arr)):
             assertEq(arr[idx], reference[idx])
 
+    assertEq(len(getIntArray(arrayTable, "empty")), 0)
+    assertEq(len(getFloatArray(arrayTable, "empty")), 0)
+    assertEq(len(getBoolArray(arrayTable, "empty")), 0)
+    assertEq(len(getStringArray(arrayTable, "empty")), 0)
+    assertEq(len(getDateTimeArray(arrayTable, "empty")), 0)
+
     checkGetArrayFunc("intArr", getIntArray, [1, 2, 3, 4, 5])
     checkGetArrayFunc("floatArr", getFloatArray, [10.0, 11.0, 12.0, 13.0])
     checkGetArrayFunc("boolArr", getBoolArray, [false, true])
     checkGetArrayFunc("stringArr", getStringArray, ["foo", "bar", "baz"])
+    checkGetArrayFunc("dateTimeArr", getDateTimeArray, 
+                      [TomlDateTime(year: 1978, month: 02, day: 07,
+                                    hour: 1, minute: 2, second: 3,
+                                    zoneHourShift: 0, zoneMinuteShift: 0)])
