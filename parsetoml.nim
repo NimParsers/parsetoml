@@ -27,6 +27,7 @@ import math
 import streams
 import strutils
 import tables
+import unicode
 import unsigned
 
 type
@@ -237,38 +238,7 @@ proc parseUnicode(state : var ParserState) : string =
     if code < 0:
         raise(newTomlError(state, "negative Unicode codepoint"))
 
-    result = newStringOfCap(6)
-    if code <= 0x0000007F:
-        result.add(cast[char](code and 0x7F))
-    elif code <= 0x000007FF:
-        result.add(cast[char](((code shr 6) and 0x1F) or 0xC0) &
-                   cast[char](((code shr 0) and 0x3F) or 0x80))
-    elif code <= 0x0000FFFF:
-        result.add(cast[char](((code shr 12) and 0x0F) or 0xE0) &
-                   cast[char](((code shr  6) and 0x3F) or 0x80) &
-                   cast[char](((code shr  0) and 0x3F) or 0x80))
-    elif code <= 0x001FFFFF:
-        result.add(cast[char](((code shr 18) and 0x07) or 0xF0) &
-                   cast[char](((code shr 12) and 0x3F) or 0x80) &
-                   cast[char](((code shr  6) and 0x3F) or 0x80) &
-                   cast[char](((code shr  0) and 0x3F) or 0x80))
-    elif code <= 0x03FFFFFF:
-        result.add(cast[char](((code shr 24) and 0x03) or 0xF8) &
-                   cast[char](((code shr 18) and 0x3F) or 0x80) &
-                   cast[char](((code shr 12) and 0x3F) or 0x80) &
-                   cast[char](((code shr  6) and 0x3F) or 0x80) &
-                   cast[char](((code shr  0) and 0x3F) or 0x80))
-    elif code <= 0x7FFFFFFF:
-        result.add(cast[char](((code shr 30) and 0x03) or 0xF8) &
-                   cast[char](((code shr 24) and 0x3F) or 0x80) &
-                   cast[char](((code shr 18) and 0x3F) or 0x80) &
-                   cast[char](((code shr 12) and 0x3F) or 0x80) &
-                   cast[char](((code shr  6) and 0x3F) or 0x80) &
-                   cast[char](((code shr  0) and 0x3F) or 0x80))
-    else:
-        # We shouldn't reach this point: all the cases have been covered above
-        assert false
-
+    return unicode.toUTF8(Rune(code))
 
 ################################################################################
 
