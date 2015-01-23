@@ -48,8 +48,12 @@ type
         hour* : int
         minute* : int
         second* : int
-        zoneHourShift* : int
-        zoneMinuteShift* : int
+        case shift: bool
+        of true:
+            isShiftPositive : bool
+            zoneHourShift* : int
+            zoneMinuteShift* : int
+        of false: nil
 
     TomlTable* = OrderedTable[string, TomlValueRef]
     TomlTableRef* = ref TomlTable
@@ -491,15 +495,13 @@ proc parseDateTimePart(state : var ParserState,
     nextChar = state.getNextChar()
     case nextChar
     of 'z', 'Z':
-        # Local time
-        dateTime.zoneHourShift = 0
-        dateTime.zoneMinuteShift = 0
+        dateTime.shift = false
     of '+', '-':
+        dateTime.shift = true
+        dateTime.isShiftPositive = (nextChar == '+')
         dateTime.zoneHourShift = 
             parseIntAndCheckBounds(state, 0, 23,
                                    "invalid number of hours")
-        if nextChar == '-':
-            dateTime.zoneHourShift *= -1
 
         nextChar = state.getNextChar()
         if nextChar != ':':
@@ -1291,12 +1293,12 @@ de"""))
         assertEq(value.hour, 11)
         assertEq(value.minute, 34)
         assertEq(value.second, 01)
+        assertEq(value.shift, true)
+        assertEq(value.isShiftPositive, true)
         assertEq(value.zoneHourShift, 13)
         assertEq(value.zoneMinuteShift, 24)
 
     block:
-        # We do not include the "YYYY-" part, see the implementation
-        # of "praseDateTime" to know why
         var s = newParserState(newStringStream("12-06T11:34:01Z"))
         var value : TomlDateTime
         parseDateTimePart(s, value)
@@ -1306,8 +1308,7 @@ de"""))
         assertEq(value.hour, 11)
         assertEq(value.minute, 34)
         assertEq(value.second, 01)
-        assertEq(value.zoneHourShift, 0)
-        assertEq(value.zoneMinuteShift, 0)
+        assertEq(value.shift, false)
 
     block:
         # We do not include the "YYYY-" part, see the implementation
@@ -1321,7 +1322,9 @@ de"""))
         assertEq(value.hour, 11)
         assertEq(value.minute, 34)
         assertEq(value.second, 01)
-        assertEq(value.zoneHourShift, -13)
+        assertEq(value.shift, true)
+        assertEq(value.isShiftPositive, false)
+        assertEq(value.zoneHourShift, 13)
         assertEq(value.zoneMinuteShift, 24)
 
     ########################################
@@ -1555,7 +1558,18 @@ dateTimeArr = [1978-02-07T01:02:03Z]
     checkGetArrayFunc("floatArr", getFloatArray, [10.0, 11.0, 12.0, 13.0])
     checkGetArrayFunc("boolArr", getBoolArray, [false, true])
     checkGetArrayFunc("stringArr", getStringArray, ["foo", "bar", "baz"])
-    checkGetArrayFunc("dateTimeArr", getDateTimeArray, 
-                      [TomlDateTime(year: 1978, month: 02, day: 07,
-                                    hour: 1, minute: 2, second: 3,
-                                    zoneHourShift: 0, zoneMinuteShift: 0)])
+
+    block:
+        let referenceDate = TomlDateTime(year: 1978, month: 2, day: 7, 
+                                         hour: 1, minute: 2, second: 3, 
+                                         shift: false)
+                                         
+        let arr = arrayTable.getDateTimeArray("dateTimeArr")
+        assertEq(len(arr), 1)
+        assertEq(arr[0].year, referenceDate.year)
+        assertEq(arr[0].month, referenceDate.month)
+        assertEq(arr[0].day, referenceDate.day)
+        assertEq(arr[0].hour, referenceDate.hour)
+        assertEq(arr[0].minute, referenceDate.minute)
+        assertEq(arr[0].second, referenceDate.second)
+        assertEq(arr[0].shift, referenceDate.shift)
