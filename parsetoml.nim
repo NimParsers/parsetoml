@@ -536,7 +536,8 @@ proc parseValue(state : var ParserState) : TomlValueRef =
 
     nextChar = state.getNextNonWhitespace(skipNoLf)
     case nextChar
-    of strutils.Digits:
+    of strutils.Digits, '+', '-':
+        let surelyNotDateTime = nextChar in {'+', '-'}
         state.pushBackChar(nextChar)
 
         # We can either have an integer, a float or a datetime
@@ -557,6 +558,9 @@ proc parseValue(state : var ParserState) : TomlValueRef =
             result = TomlValueRef(kind: TomlValueKind.Float,
                                   floatVal: value)
         of '-':
+            if surelyNotDateTime:
+                raise(newTomlError(state, "unexpected character \"-\""))
+
             # This might be a datetime object
             var val : TomlDateTime
             val.year = int(intPart)
