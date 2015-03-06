@@ -13,6 +13,10 @@ Use ``nimble`` to install it:
 
 ## Usage
 
+The full documentation is available at
+http://parsetoml.readthedocs.org/en/latest/. Here I just show a few snippets of
+code.
+
 Import the library using
 
 `````nim
