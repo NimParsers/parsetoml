@@ -946,7 +946,7 @@ proc `$`*(val : TomlValue) : string =
 
 # This function is mostly useful for debugging purposes
 proc dump*(table : TomlTableRef, indentLevel : int = 0) =
-    let space = repeatStr(indentLevel, " ")
+    let space = spaces(indentLevel)
     for key, val in pairs(table):
         if val.kind == TomlValueKind.Table:
             echo space & key & " = table"
