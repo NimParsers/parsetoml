@@ -1,6 +1,6 @@
 [Package]
 name          = "parsetoml"
-version       = "0.1.0"
+version       = "0.2.0"
 author        = "Maurizio Tomasi <ziotom78 .at. gmail.com>"
 description   = "Toml parser library for Nim"
 license       = "MIT"
