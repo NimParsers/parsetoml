@@ -20,7 +20,7 @@ code.
 Import the library using
 
 `````nim
-import NimToml
+import parsetoml
 `````
 
 There are several functions that can parse TOML content:
