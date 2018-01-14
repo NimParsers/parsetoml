@@ -528,7 +528,7 @@ proc pow10(x : float64, pow : int64) : float64 {. inline .} =
                         10.0'f64
 
     result = x
-    for idx in countup(1, abs(pow)):
+    for idx in countup(1'i64, abs(pow)):
         result *= mulFactor
 
 proc parseValue(state : var ParserState) : TomlValueRef =
