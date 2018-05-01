@@ -90,7 +90,8 @@ const
   defaultStringCapacity = 256
 
 proc newTomlError(location: ParserState, msg: string): ref TomlError =
-  result = newException(TomlError, $location.line & ":" & $location.column & " " & msg)
+  result = newException(TomlError, location.fileName & "(" & $location.line &
+                        ":" & $location.column & ")" & " " & msg)
   result.location = location
 
 proc getNextChar(state: var ParserState): char =
@@ -165,6 +166,7 @@ proc parseInt(state: var ParserState,
     nextChar: char
     firstPos = true
     negative = false
+    wasUnderscore = false
 
   let
     baseNum = (case base
@@ -176,7 +178,17 @@ proc parseInt(state: var ParserState,
 
   result = 0
   while true:
+    wasUnderscore = nextChar == '_'
     nextChar = state.getNextChar()
+    if nextChar == '_':
+      if firstPos or wasUnderscore:
+        raise(newTomlError(state,
+                           "underscore must be surrounded by digit"))
+      elif base == base16:
+        raise(newTomlError(state,
+                           "underscore not allowed in unicode"))
+      continue
+
     if nextChar in {'+', '-'} and firstPos:
       firstPos = false
       if nextChar == '-': negative = true
@@ -188,33 +200,49 @@ proc parseInt(state: var ParserState,
                          "leading zeroes are not allowed in integers"))
 
     if nextChar notin digits:
+      if wasUnderscore:
+        raise(newTomlError(state,
+                           "underscore must be surrounded by digit"))
       state.pushBackChar(nextChar)
       break
 
-    result = result * baseNum + charToInt(nextChar, base)
-    if result < 0:
-      # If "result" is negative, we have just had an overflow
+    try:
+      result = result * baseNum - charToInt(nextChar, base)
+    except OverflowError:
       raise(newTomlError(state,
                          "integer numbers wider than 64 bits not allowed"))
 
     firstPos = false
-  if negative:
+
+  if not negative:
     result = -result
 
 proc parseDecimalPart(state: var ParserState): float64 =
   var
     nextChar: char
     invPowerOfTen = 10
+    firstPos = true
+    wasUnderscore = false
 
   result = 0.0
   while true:
+    wasUnderscore = nextChar == '_'
     nextChar = state.getNextChar()
+    if nextChar == '_':
+      if firstPos or wasUnderscore:
+        raise(newTomlError(state,
+                           "underscore must be surrounded by digit"))
+      continue
     if nextChar notin strutils.Digits:
+      if wasUnderscore:
+        raise(newTomlError(state,
+                           "underscore must be surrounded by digit"))
       state.pushBackChar(nextChar)
       break
 
     result = result + (int(nextChar) - int('0')) / invPowerOfTen
     invPowerOfTen *= 10
+    firstPos = false
 
 proc stringDelimiter(kind: StringType): char {.inline, noSideEffect.} =
   result = (case kind
@@ -223,8 +251,9 @@ proc stringDelimiter(kind: StringType): char {.inline, noSideEffect.} =
 
 proc parseUnicode(state: var ParserState): string =
   let code = parseInt(state, base16, LeadingChar.AllowZero)
-  if code < 0:
-    raise(newTomlError(state, "negative Unicode codepoint"))
+  if code notin 0'i64..0xD7FF and code notin 0xE000'i64..0x10FFFF:
+    raise(newTomlError(state, "invalid Unicode codepoint, " &
+                       "must be a Unicode scalar value"))
 
   return unicode.toUTF8(Rune(code))
 
@@ -237,7 +266,6 @@ proc parseEscapeChar(state: var ParserState, escape: char): string =
   of 'r': result = "\r"
   of '\'': result = "\'"
   of '\"': result = "\""
-  of '/': result = "/"
   of '\\': result = "\\"
   of 'u', 'U': result = parseUnicode(state)
   else:
@@ -424,35 +452,50 @@ proc parseDateTimePart(state: var ParserState,
   # tells the parser that the value is a datetime). As a consequence
   # of this, we assume that "dateTime.year" has already been set.
 
-  var nextChar: char
+  var
+    nextChar: char
+    lastChar: int
 
   # Parse the month
+  lastChar = state.column
   dateTime.month = parseIntAndCheckBounds(state, 1, 12,
                                           "invalid number for the month")
+  if state.column - lastChar != 3:
+    echo $(state.column - lastChar)
+    raise(newTomlError(state, "month number is only a single digit"))
 
   nextChar = state.getNextChar()
   if nextChar != '-':
     raise(newTomlError(state, "\"-\" expected after the month number"))
 
   # Parse the day
+  lastChar = state.column
   dateTime.day = parseIntAndCheckBounds(state, 1, 31,
                                         "invalid number for the day")
+  if state.column - lastChar != 3:
+    raise(newTomlError(state, "day number is only a single digit"))
 
   nextChar = state.getNextChar()
   if nextChar notin {'t', 'T'}:
     raise(newTomlError(state, "\"T\" expected after the day number"))
 
   # Parse the hour
+  lastChar = state.column
   dateTime.hour = parseIntAndCheckBounds(state, 0, 23,
                                          "invalid number of hours")
+  if state.column - lastChar != 3:
+    raise(newTomlError(state, "hours is only a single digit"))
 
   nextChar = state.getNextChar()
   if nextChar != ':':
     raise(newTomlError(state, "\":\" expected after the number of hours"))
 
   # Parse the minutes
+  lastChar = state.column
   dateTime.minute = parseIntAndCheckBounds(state, 0, 59,
                                            "invalid number of minutes")
+  if state.column - lastChar != 3:
+    raise(newTomlError(state, "minutes is only a single digit"))
 
   nextChar = state.getNextChar()
   if nextChar != ':':
@@ -460,7 +503,10 @@ proc parseDateTimePart(state: var ParserState,
                        "\":\" expected after the number of seconds"))
 
   # Parse the second. Note that seconds=60 *can* happen (leap second)
+  lastChar = state.column
   dateTime.second = parseIntAndCheckBounds(state, 0, 60, "invalid second")
+  if state.column - lastChar != 3:
+    raise(newTomlError(state, "seconds is only a single digit"))
 
   nextChar = state.getNextChar()
   case nextChar
@@ -469,18 +515,25 @@ proc parseDateTimePart(state: var ParserState,
   of '+', '-':
     dateTime.shift = true
     dateTime.isShiftPositive = (nextChar == '+')
+    lastChar = state.column
     dateTime.zoneHourShift =
       parseIntAndCheckBounds(state, 0, 23,
                              "invalid number of hours")
+    if state.column - lastChar != 3:
+      raise(newTomlError(state, "shift hours is only a single digit"))
 
     nextChar = state.getNextChar()
     if nextChar != ':':
       raise(newTomlError(state,
                          "\":\" expected after the number of hours"))
 
+    lastChar = state.column
     dateTime.zoneMinuteShift =
       parseIntAndCheckBounds(state, 0, 59,
                              "invalid number of minutes")
+    if state.column - lastChar != 3 and
+      (not state.stream.atEnd or state.column - lastChar != 2):
+      raise(newTomlError(state, "shift minutes is only a single digit "))
   else:
     raise(newTomlError(state, "unexpected character \"" & nextChar &
                        "\" instead of the time zone"))
@@ -512,7 +565,16 @@ proc parseValue(state: var ParserState): TomlValueRef =
     let intPart = parseInt(state, base10, LeadingChar.DenyZero)
     nextChar = state.getNextChar()
     case nextChar
+    of 'e', 'E':
+      let exponent = parseInt(state, base10, LeadingChar.AllowZero)
+      let value = pow10(float64(intPart), exponent)
+      result = TomlValueRef(kind: TomlValueKind.Float,
+                            floatVal: value)
     of '.':
+      nextChar = state.getNextChar()
+      if nextChar notin strutils.Digits:
+        raise(newTomlError(state, "dot not followed by digit in float"))
+      state.pushBackChar(nextChar)
       let decimalPart = parseDecimalPart(state)
       nextChar = state.getNextChar()
       var exponent: int64 = 0
@@ -521,8 +583,11 @@ proc parseValue(state: var ParserState): TomlValueRef =
       else:
         state.pushBackChar(nextChar)
 
-      let value = pow10(float64(intPart) + decimalPart,
-                        exponent)
+      let value =
+        if intPart < 0:
+          pow10(float64(intPart) - decimalPart, exponent)
+        else:
+          pow10(float64(intPart) + decimalPart, exponent)
       result = TomlValueRef(kind: TomlValueKind.Float,
                             floatVal: value)
     of '-':
@@ -583,23 +648,25 @@ proc parseValue(state: var ParserState): TomlValueRef =
     raise(newTomlError(state,
                        "unexpected character \"" & nextChar & "\""))
 
-type
-  SpecialChars {.pure.} = enum
-    AllowNumberSign, DenyNumberSign
-
-proc parseName(state: var ParserState,
-               numberSign: SpecialChars): string =
+proc parseName(state: var ParserState): string =
   # This parses the name of a key or a table
   result = newStringOfCap(defaultStringCapacity)
 
-  var nextChar: char
+  var nextChar = state.getNextChar()
+  if nextChar == '\"':
+    return state.parseString(StringType.Basic)
+  elif nextChar == '\'':
+    return state.parseString(StringType.Literal)
+  state.pushBackChar(nextChar)
   while true:
     nextChar = state.getNextChar()
-    if (nextChar in {'=', '.', '[', ']', '\0', ' '}) or
-     nextChar == '#' and numberSign == SpecialChars.DenyNumberSign:
+    if (nextChar in {'=', '.', '[', ']', '\0', ' '}):
       # Any of the above characters marks the end of the name
       state.pushBackChar(nextChar)
       break
+    elif (nextChar notin {'a'..'z', 'A'..'Z', '0'..'9', '_', '-'}):
+      raise(newTomlError(state,
+                         "bare key has illegal character"))
     else:
       result.add(nextChar)
 
@@ -613,17 +680,25 @@ proc parseTableName(state: var ParserState,
   result = newSeq[string](0)
 
   while true:
-    let partName = state.parseName(SpecialChars.AllowNumberSign)
+    #let partName = state.parseName(SpecialChars.AllowNumberSign)
+    var
+      nextChar = state.getNextChar()
+      partName: string
+    if nextChar == '"':
+      partName = state.parseString(StringType.Basic)
+    else:
+      state.pushBackChar(nextChar)
+      partName = state.parseName()
     result.add(partName)
 
-    var nextChar = state.getNextChar()
+    nextChar = state.getNextChar()
     case nextChar
     of ']':
       if brackets == BracketType.double:
         nextChar = state.getNextChar()
         if nextChar != ']':
-            raise(newTomlError(state,
-                               "\"]]\" expected"))
+          raise(newTomlError(state,
+                             "\"]]\" expected"))
 
       # We must check that there is nothing else in this line
       nextChar = state.getNextNonWhitespace(skipNoLf)
@@ -638,24 +713,69 @@ proc parseTableName(state: var ParserState,
       raise(newTomlError(state,
                          "unexpected character \"" & nextChar & "\""))
 
-type
-  TomlKeyValue = tuple[key: string, value: TomlValueRef]
+proc parseInlineTable(state: var ParserState, tableRef: var TomlTableRef) =
+  while true:
+    var nextChar = state.getNextNonWhitespace(skipLf)
+    case nextChar
+    of '}':
+      return
+    of ',':
+      # Check that this is not a terminating comma (like in
+      #  "[b,]")
+      nextChar = state.getNextNonWhitespace(skipLf)
+      if nextChar == '}':
+        return
 
-proc parseKeyValuePair(state: var ParserState): TomlKeyValue =
-  result.key = state.parseName(SpecialChars.DenyNumberSign)
+      state.pushBackChar(nextChar)
+    else:
+      state.pushBackChar(nextChar)
+
+      let key = state.parseName()
+
+      nextChar = state.getNextNonWhitespace(skipLf)
+      if nextChar != '=':
+        raise(newTomlError(state,
+                           "key names cannot contain spaces"))
+      let value = state.parseValue()
+      (tableRef[])[key] = value
+
+proc createTableDef(state: ParserState,
+                    curTableRef: var TomlTableRef,
+                    tableNames: seq[string])
+
+proc parseKeyValuePair(state: var ParserState, tableRef: var TomlTableRef) =
+  let key = state.parseName()
 
   var nextChar = state.getNextNonWhitespace(skipNoLf)
   if nextChar != '=':
     raise(newTomlError(state,
                        "key names cannot contain spaces"))
 
-  result.value = state.parseValue()
-
-  # We must check that there is nothing else in this line
   nextChar = state.getNextNonWhitespace(skipNoLf)
-  if nextChar != '\l':
-    raise(newTomlError(state,
-                       "unexpected character \"" & nextChar & "\""))
+  # Check that this is a regular value and not an inline table
+  if nextChar != '{':
+    state.pushBackChar(nextChar)
+    let value = state.parseValue()
+
+    # We must check that there is nothing else in this line
+    nextChar = state.getNextNonWhitespace(skipNoLf)
+    if nextChar != '\l':
+      raise(newTomlError(state,
+                         "unexpected character \"" & nextChar & "\""))
+
+    if (tableRef[]).hasKey(key):
+      raise(newTomlError(state,
+                         "duplicate key, \"" & key & "\" already in table"))
+    (tableRef[])[key] = value
+  else:
+    nextChar = state.getNextNonWhitespace(skipNoLf)
+    if nextChar == ',':
+      raise(newTomlError(state, "first input table element missing"))
+    state.pushBackChar(nextChar)
+    let oldTableRef = tableRef
+    createTableDef(state, tableRef, @[key])
+    parseInlineTable(state, tableRef)
+    tableRef = oldTableRef
 
 proc newParserState(s: streams.Stream,
                     fileName: string = ""): ParserState =
@@ -710,6 +830,9 @@ proc createOrAppendTableArrayDef(state: ParserState,
                                  tableNames: seq[string]) =
   # This is a table array entry (e.g. "[[entry]]")
   for idx, tableName in tableNames:
+    if tableName.len == 0:
+      raise(newTomlError(state,
+                         "empty key not allowed"))
     let lastTableInChain = idx == high(tableNames)
 
     var newValue: TomlValueRef
@@ -767,6 +890,9 @@ proc createTableDef(state: ParserState,
 
   # This starts a new table (e.g. "[table]")
   for tableName in tableNames:
+    if tableName.len == 0:
+      raise(newTomlError(state,
+                         "empty key not allowed"))
     if not hasKey(curTableRef[], tableName):
       new(newValue)
       setEmptyTableVal(newValue)
@@ -781,6 +907,8 @@ proc createTableDef(state: ParserState,
 
 proc parseStream*(inputStream: streams.Stream,
                   fileName: string = ""): TomlTableRef =
+  ## Parses a stream of TOML formatted data into a TOML table. The optional
+  ## filename is used for error messages.
   var state = newParserState(inputStream, fileName)
   new(result)
   result[] = initOrderedTable[string, TomlValueRef]()
@@ -837,23 +965,33 @@ proc parseStream*(inputStream: streams.Stream,
     else:
       # Everything else marks the presence of a "key = value" pattern
       state.pushBackChar(nextChar)
-      let keyValuePair = state.parseKeyValuePair()
-      (curTableRef[])[keyValuePair.key] = keyValuePair.value
+      parseKeyValuePair(state, curTableRef)
 
 proc parseString*(tomlStr: string, fileName: string = ""): TomlTableRef =
   let strStream = newStringStream(tomlStr)
   result = parseStream(strStream, fileName)
 
 proc parseFile*(f: File, fileName: string = ""): TomlTableRef =
+  ## Parses a file of TOML formatted data into a TOML table. The optional
+  ## filename is used for error messages.
   let fStream = newFileStream(f)
   result = parseStream(fStream, fileName)
 
 proc parseFile*(fileName: string): TomlTableRef =
+  ## Parses the file found at fileName with TOML formatted data into a TOML
+  ## table.
   let fStream = newFileStream(fileName, fmRead)
   result = parseStream(fStream, fileName)
 
 proc `$`*(val: TomlDateTime): string =
-  result = $val.year & "-" & $val.month & "-" & $val.day
+  result = ($val.year).align(4, '0') & "-" & ($val.month).align(2, '0') & "-" &
+    ($val.day).align(2, '0') & "T" & ($val.hour).align(2, '0') & ":" &
+    ($val.minute).align(2, '0') & ":" & ($val.second).align(2, '0') &
+    (if not val.shift: "Z" else: (
+      (if val.isShiftPositive: "+" else: "-") &
+        ($val.zonehourshift).align(2, '0') & ":" &
+        ($val.zoneminuteshift).align(2, '0'))
+    )
 
 proc `$`*(val: TomlValue): string =
   case val.kind
@@ -877,8 +1015,8 @@ proc `$`*(val: TomlValue): string =
   of TomlValueKind.Table:
     result = "table(" & $(len(val.tableVal)) & " elements)"
 
-# This function is mostly useful for debugging purposes
 proc dump*(table: TomlTableRef, indentLevel: int = 0) =
+  ## This function is mostly useful for debugging purposes
   let space = spaces(indentLevel)
   for key, val in pairs(table):
     if val.kind == TomlValueKind.Table:
@@ -896,14 +1034,13 @@ proc newNoneValue(): TomlValueRef =
   new(result)
   result.kind = TomlValueKind.None
 
-# Given a TOML table reference and a string address, return a
-# reference to the value in the table. Addresses are of the form
-# "a.b.c.d", where all but the last element in the dot-separated
-# string are tables. Elements in table arrays are indicated by the
-# form "a[NNN]", where NNN is an integer number.
-
 proc getValueFromFullAddr*(table: TomlTableRef,
                            fullAddr: string): TomlValueRef =
+  ## Given a TOML table reference and a string address, return a
+  ## reference to the value in the table. Addresses are of the form
+  ## "a.b.c.d", where all but the last element in the dot-separated
+  ## string are tables. Elements in table arrays are indicated by the
+  ## form "a[NNN]", where NNN is an integer number.
 
   let fieldNames = strutils.split(fullAddr, '.')
 
@@ -928,7 +1065,7 @@ proc getValueFromFullAddr*(table: TomlTableRef,
         return newNoneValue()
     else:
       if not curTable.hasKey(curFieldName):
-          return newNoneValue()
+        return newNoneValue()
 
       curNode = curTable[curFieldName]
 
@@ -1013,6 +1150,95 @@ defineGetArray(getBoolArray, TomlValueKind.Bool, boolVal, bool)
 defineGetArray(getStringArray, TomlValueKind.String, stringVal, string)
 defineGetArray(getDateTimeArray, TomlValueKind.DateTime,
                dateTimeVal, TomlDateTime)
+
+import json, sequtils
+
+proc toJson*(value: TomlValueRef): JsonNode
+
+proc toJson*(table: TomlTableRef): JsonNode =
+  ## Converts a TOML table to a JSON node. This uses the format specified in
+  ## the validation suite for it's output:
+  ## https://github.com/BurntSushi/toml-test#example-json-encoding
+  result = newJObject()
+  for key, value in pairs(table):
+    result[key] = value.toJson
+
+proc toJson*(value: TomlValueRef): JsonNode =
+  ## Converts a TOML value to a JSON node. This uses the format specified in
+  ## the validation suite for it's output:
+  ## https://github.com/BurntSushi/toml-test#example-json-encoding
+  case value.kind:
+    of TomlValueKind.Int:
+      %*{"type": "integer", "value": $value.intVal}
+    of TomlValueKind.Float:
+      %*{"type": "float", "value": $value.floatVal}
+    of TomlValueKind.Bool:
+      %*{"type": "bool", "value": $value.boolVal}
+    of TomlValueKind.Datetime:
+      %*{"type": "datetime", "value": $value.datetimeVal}
+    of TomlValueKind.String:
+      %*{"type": "string", "value": value.stringVal}
+    of TomlValueKind.Array:
+      if value.arrayVal.len == 0:
+        %*{"type": "array", "value": []}
+      elif value.arrayVal[0].kind == TomlValueKind.Table:
+        %value.arrayVal.map(toJson)
+      else:
+        %*{"type": "array", "value": value.arrayVal.map(toJson)}
+    of TomlValueKind.Table:
+      value.tableVal.toJson
+    of TomlValueKind.None:
+      %*{"type": "ERROR"}
+
+proc toKey(str: string): string =
+  for c in str:
+    if (c notin {'a'..'z', 'A'..'Z', '0'..'9', '_', '-'}):
+      return "\"" & str & "\""
+  str
+
+proc toTomlString*(value: TomlValueRef): string
+
+proc toTomlString*(value: TomlTableRef, parents = ""): string =
+  ## Converts a TOML table to a TOML formatted string for output to a file.
+  result = ""
+  var subtables: seq[tuple[key: string, value: TomlValueRef]] = @[]
+  for key, value in pairs(value):
+    block outer:
+      if value.kind == TomlValueKind.Table:
+        subtables.add((key: key, value: value))
+      elif value.kind == TomlValueKind.Array and
+        value.arrayVal[0].kind == TomlValueKind.Table:
+        let tables = value.arrayVal.map(toTomlString)
+        for table in tables:
+          result = result & "[[" & key & "]]\n" & table & "\n"
+      else:
+        result = result & key.toKey & " = " & toTomlString(value) & "\n"
+  for kv in subtables:
+    let fullKey = (if parents.len > 0: parents & "." else: "") & kv.key.toKey
+    for ikey, ivalue in pairs(kv.value.tableVal):
+      if ivalue.kind != TomlValueKind.Table:
+        return result & "[" & fullKey & "]\n" &
+          kv.value.tableVal.toTomlString(fullKey) & "\n"
+    result = result & kv.value.tableVal.toTomlString(fullKey)
+
+proc toTomlString*(value: TomlValueRef): string =
+  ## Converts a TOML value to a TOML formatted string for output to a file.
+  case value.kind:
+  of TomlValueKind.Int: $value.intVal
+  of TomlValueKind.Float: $value.floatVal
+  of TomlValueKind.Bool: $value.boolVal
+  of TomlValueKind.Datetime: $value.datetimeVal
+  of TomlValueKind.String: "\"" & value.stringVal & "\""
+  of TomlValueKind.Array:
+    if value.arrayVal.len == 0:
+      "[]"
+    elif value.arrayVal[0].kind == TomlValueKind.Table:
+      value.arrayVal.map(toTomlString).join("\n")
+    else:
+      "[" & value.arrayVal.map(toTomlString).join(", ") & "]"
+  of TomlValueKind.Table: value.tableVal.toTomlString
+  else:
+    "UNKNOWN"
 
 when isMainModule:
   template assertEq(T1: untyped, T2: untyped) =
@@ -1262,7 +1488,8 @@ de"""))
 
   block:
     # Escape sequences
-    var s = newParserState(newStringStream('\b' & '\f' & '\l' & '\r' & '\\' & '\"' & '\"'))
+    var s = newParserState(newStringStream('\b' & '\f' & '\l' & '\r' & '\\' &
+      '\"' & '\"'))
     assert parseSingleLineString(s, StringType.Basic) == "\b\f\l\r\""
 
   block:
@@ -1359,7 +1586,8 @@ hello_there = 1.0e+2
 
   except TomlError:
     let loc = (ref TomlError)(getCurrentException()).location
-    echo loc.filename & ":" & $(loc.line) & ":" & $(loc.column) & ":" & getCurrentExceptionMsg()
+    echo loc.filename & ":" & $(loc.line) & ":" & $(loc.column) & ":" &
+      getCurrentExceptionMsg()
 
   let fruitTable = parseString("""
 [[fruit]]
@@ -1395,7 +1623,8 @@ name = "banana"
            TomlValueKind.Array)
 
   block:
-    let varietyTable = fruitTable["fruit"].arrayVal[0].tableVal["variety"].arrayVal
+    let varietyTable =
+      fruitTable["fruit"].arrayVal[0].tableVal["variety"].arrayVal
     assertEq(varietyTable.len(), 2)
     assertEq(varietyTable[0].kind, TomlValueKind.Table)
     assertEq(varietyTable[0].tableVal["name"].kind, TomlValueKind.String)
@@ -1407,14 +1636,15 @@ name = "banana"
   assertEq(fruitTable["fruit"].arrayVal[1].kind, TomlValueKind.Table)
   assertEq(fruitTable["fruit"].arrayVal[1].tableVal.len(), 2)
 
-  assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].kind, 
+  assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].kind,
            TomlValueKind.String)
   assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].stringVal, "banana")
-  assertEq(fruitTable["fruit"].arrayVal[1].tableVal["variety"].kind, 
+  assertEq(fruitTable["fruit"].arrayVal[1].tableVal["variety"].kind,
            TomlValueKind.Array)
 
   block:
-    let varietyTable = fruitTable["fruit"].arrayVal[1].tableVal["variety"].arrayVal
+    let varietyTable =
+      fruitTable["fruit"].arrayVal[1].tableVal["variety"].arrayVal
     assertEq(varietyTable.len(), 1)
     assertEq(varietyTable[0].kind, TomlValueKind.Table)
     assertEq(varietyTable[0].tableVal["name"].kind, TomlValueKind.String)
