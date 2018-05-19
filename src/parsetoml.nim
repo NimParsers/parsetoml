@@ -462,7 +462,7 @@ proc parseDateTimePart(state: var ParserState,
                                           "invalid number for the month")
   if state.column - lastChar != 3:
     echo $(state.column - lastChar)
-    raise(newTomlError(state, "month number is only a single digit"))
+    raise(newTomlError(state, "month number is not exactly two digits"))
 
   nextChar = state.getNextChar()
   if nextChar != '-':
@@ -473,7 +473,7 @@ proc parseDateTimePart(state: var ParserState,
   dateTime.day = parseIntAndCheckBounds(state, 1, 31,
                                         "invalid number for the day")
   if state.column - lastChar != 3:
-    raise(newTomlError(state, "day number is only a single digit"))
+    raise(newTomlError(state, "day number is not exactly two digits"))
 
   nextChar = state.getNextChar()
   if nextChar notin {'t', 'T'}:
@@ -484,7 +484,7 @@ proc parseDateTimePart(state: var ParserState,
   dateTime.hour = parseIntAndCheckBounds(state, 0, 23,
                                          "invalid number of hours")
   if state.column - lastChar != 3:
-    raise(newTomlError(state, "hours is only a single digit"))
+    raise(newTomlError(state, "hours is not exactly two digits"))
 
   nextChar = state.getNextChar()
   if nextChar != ':':
@@ -495,7 +495,7 @@ proc parseDateTimePart(state: var ParserState,
   dateTime.minute = parseIntAndCheckBounds(state, 0, 59,
                                            "invalid number of minutes")
   if state.column - lastChar != 3:
-    raise(newTomlError(state, "minutes is only a single digit"))
+    raise(newTomlError(state, "minutes is not exactly two digits"))
 
   nextChar = state.getNextChar()
   if nextChar != ':':
@@ -505,8 +505,9 @@ proc parseDateTimePart(state: var ParserState,
   # Parse the second. Note that seconds=60 *can* happen (leap second)
   lastChar = state.column
   dateTime.second = parseIntAndCheckBounds(state, 0, 60, "invalid second")
-  if state.column - lastChar != 3:
-    raise(newTomlError(state, "seconds is only a single digit"))
+  if state.column > lastChar and
+     state.column - lastChar != 3:
+    raise(newTomlError(state, "seconds is not exactly two digits"))
 
   nextChar = state.getNextChar()
   case nextChar
@@ -518,22 +519,19 @@ proc parseDateTimePart(state: var ParserState,
     lastChar = state.column
     dateTime.zoneHourShift =
       parseIntAndCheckBounds(state, 0, 23,
-                             "invalid number of hours")
+                             "invalid number of shift hours")
     if state.column - lastChar != 3:
-      raise(newTomlError(state, "shift hours is only a single digit"))
+      raise(newTomlError(state, "shift hours is not exactly two digits"))
 
     nextChar = state.getNextChar()
     if nextChar != ':':
       raise(newTomlError(state,
-                         "\":\" expected after the number of hours"))
+                         "\":\" expected after the number of shift hours"))
 
     lastChar = state.column
     dateTime.zoneMinuteShift =
       parseIntAndCheckBounds(state, 0, 59,
-                             "invalid number of minutes")
-    if state.column - lastChar != 3 and
-      (not state.stream.atEnd or state.column - lastChar != 2):
-      raise(newTomlError(state, "shift minutes is only a single digit "))
+                             "invalid number of shift minutes")
   else:
     raise(newTomlError(state, "unexpected character \"" & nextChar &
                        "\" instead of the time zone"))
@@ -968,6 +966,8 @@ proc parseStream*(inputStream: streams.Stream,
       parseKeyValuePair(state, curTableRef)
 
 proc parseString*(tomlStr: string, fileName: string = ""): TomlTableRef =
+  ## Parses a string of TOML formatted data into a TOML table. The optional
+  ## filename is used for error messages.
   let strStream = newStringStream(tomlStr)
   result = parseStream(strStream, fileName)
 
@@ -984,6 +984,7 @@ proc parseFile*(fileName: string): TomlTableRef =
   result = parseStream(fStream, fileName)
 
 proc `$`*(val: TomlDateTime): string =
+  ## Converts the TOML date-time object into the ISO format read by the parser
   result = ($val.year).align(4, '0') & "-" & ($val.month).align(2, '0') & "-" &
     ($val.day).align(2, '0') & "T" & ($val.hour).align(2, '0') & ":" &
     ($val.minute).align(2, '0') & ":" & ($val.second).align(2, '0') &
@@ -994,6 +995,7 @@ proc `$`*(val: TomlDateTime): string =
     )
 
 proc `$`*(val: TomlValue): string =
+  ## Turns whatever value into a type and value representation, used by ``dump``
   case val.kind
   of TomlValueKind.None:
     result = "none()"
@@ -1016,7 +1018,8 @@ proc `$`*(val: TomlValue): string =
     result = "table(" & $(len(val.tableVal)) & " elements)"
 
 proc dump*(table: TomlTableRef, indentLevel: int = 0) =
-  ## This function is mostly useful for debugging purposes
+  ## Dump out the entire table as it was parsed. This procedure is mostly
+  ## useful for debugging purposes
   let space = spaces(indentLevel)
   for key, val in pairs(table):
     if val.kind == TomlValueKind.Table:
@@ -1109,6 +1112,7 @@ defineGetProc(getFloat, TomlValueKind.Float, floatVal, float64)
 defineGetProc(getBool, TomlValueKind.Bool, boolVal, bool)
 defineGetProc(getString, TomlValueKind.String, stringVal, string)
 defineGetProc(getDateTime, TomlValueKind.DateTime, dateTimeVal, TomlDateTime)
+defineGetProc(getTable, TomlValueKind.Table, tableVal, TomlTableRef)
 
 defineGetProcDefault(getInt, int64)
 defineGetProcDefault(getFloat, float64)
@@ -1255,7 +1259,6 @@ when isMainModule:
 
   # Here come a few tests
 
-  ########################################
   # pow10
   assert pow10(5.0, 1) == 50.0
   assert pow10(5.0, 2) == 500.0
@@ -1264,7 +1267,6 @@ when isMainModule:
   assert pow10(100.0, -1) == 10.0
   assert pow10(100.0, -2) == 1.0
 
-  ########################################
   # getNextChar
 
   block:
@@ -1301,7 +1303,6 @@ de"""))
 
     assertEq(s.getNextChar(), '\0')
 
-  ########################################
   # getNextNonWhitespace
 
   block:
@@ -1358,7 +1359,6 @@ de"""))
 
     assertEq(s.getNextNonWhitespace(skipLf), '\0')
 
-  ########################################
   # charToInt
 
   assertEq(charToInt('0', base10), 0)
@@ -1395,7 +1395,6 @@ de"""))
   assertEq(charToInt('E', base16), 14)
   assertEq(charToInt('F', base16), 15)
 
-  ########################################
   # parseInt
 
   block:
@@ -1420,7 +1419,6 @@ de"""))
 
     assertEq(parseInt(s, base10, LeadingChar.AllowZero), 1063)
 
-  ########################################
   # parseDecimalPart
 
   block:
@@ -1430,7 +1428,6 @@ de"""))
     assertEq(int(100000 * parseDecimalPart(s)), 24802)
 
 
-  ########################################
   # parseDateTimePart
 
   block:
@@ -1479,7 +1476,6 @@ de"""))
     assertEq(value.zoneHourShift, 13)
     assertEq(value.zoneMinuteShift, 24)
 
-  ########################################
   # parseSingleLineString
 
   block:
@@ -1497,7 +1493,6 @@ de"""))
     var s = newParserState(newStringStream(r"\u59\U2126\u1f600"""))
     assert parseSingleLineString(s, StringType.Basic) == "YΩ😀"
 
-  ########################################
   # parseMultiLineString
 
   block:
@@ -1505,7 +1500,6 @@ de"""))
     # TODO: add tests here
     discard parseMultiLineString(s, StringType.Basic)
 
-  ########################################
   # parseArray
 
   block:
@@ -1537,7 +1531,6 @@ de"""))
     except TomlError:
       discard # That's expected
 
-  ########################################
   # Arrays of tables (they're tricky to implement!)
 
   try:
@@ -1651,7 +1644,6 @@ name = "banana"
     assertEq(varietyTable[0].tableVal["name"].stringVal, "plantain")
 
 
-  ########################################
   # getValueFromFullAddr
 
   block:
@@ -1669,7 +1661,6 @@ name = "banana"
     let node = getValueFromFullAddr(fruitTable, "fruit[0].")
     assertEq(node.kind, TomlValueKind.None)
 
-  ########################################
   # getString
 
   assertEq(fruitTable.getString("fruit[0].name"), "apple")
@@ -1683,7 +1674,6 @@ name = "banana"
 
   assertEq(fruitTable.getString("fruit[0].color", "yellow"), "yellow")
 
-  ########################################
   # get??Array
 
   let arrayTable = parseString("""
