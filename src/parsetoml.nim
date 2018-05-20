@@ -737,7 +737,7 @@ proc parseInlineTable(state: var ParserState, tableRef: var TomlTableRef) =
       let value = state.parseValue()
       (tableRef[])[key] = value
 
-proc createTableDef(state: ParserState,
+proc createTableDef(state: var ParserState,
                     curTableRef: var TomlTableRef,
                     tableNames: seq[string])
 
@@ -788,7 +788,7 @@ proc setArrayVal(val: TomlValueRef, numOfElems: int = 0) =
   val.kind = TomlValueKind.Array
   val.arrayVal = newSeq[TomlValueRef](numOfElems)
 
-proc advanceToNextNestLevel(state: ParserState,
+proc advanceToNextNestLevel(state: var ParserState,
                             curTableRef: var TomlTableRef,
                             tableName: string) =
   let target = (curTableRef[])[tableName]
@@ -823,7 +823,7 @@ proc advanceToNextNestLevel(state: ParserState,
 # array is created, and an empty table element is added in "c". In
 # either cases, curTableRef will refer to the last element of "c".
 
-proc createOrAppendTableArrayDef(state: ParserState,
+proc createOrAppendTableArrayDef(state: var ParserState,
                                  curTableRef: var TomlTableRef,
                                  tableNames: seq[string]) =
   # This is a table array entry (e.g. "[[entry]]")
@@ -881,7 +881,7 @@ proc createOrAppendTableArrayDef(state: ParserState,
 # code will look for the "b" table that is child of "a" and it will
 # create a new table "c" which is "b"'s children.
 
-proc createTableDef(state: ParserState,
+proc createTableDef(state: var ParserState,
                     curTableRef: var TomlTableRef,
                     tableNames: seq[string]) =
   var newValue: TomlValueRef
@@ -907,6 +907,10 @@ proc parseStream*(inputStream: streams.Stream,
                   fileName: string = ""): TomlTableRef =
   ## Parses a stream of TOML formatted data into a TOML table. The optional
   ## filename is used for error messages.
+  if inputStream == nil:
+    raise newException(IOError,
+      "Unable to read from the stream created from: \"" & fileName & "\", " &
+      "possibly a missing file")
   var state = newParserState(inputStream, fileName)
   new(result)
   result[] = initOrderedTable[string, TomlValueRef]()
@@ -1289,11 +1293,13 @@ proc toTomlString*(value: TomlTableRef, parents = ""): string =
         result = result & key.toKey & " = " & toTomlString(value) & "\n"
   for kv in subtables:
     let fullKey = (if parents.len > 0: parents & "." else: "") & kv.key.toKey
-    for ikey, ivalue in pairs(kv.value.tableVal):
-      if ivalue.kind != TomlValueKind.Table:
-        return result & "[" & fullKey & "]\n" &
-          kv.value.tableVal.toTomlString(fullKey) & "\n"
-    result = result & kv.value.tableVal.toTomlString(fullKey)
+    block outer:
+      for ikey, ivalue in pairs(kv.value.tableVal):
+        if ivalue.kind != TomlValueKind.Table:
+          result = result & "[" & fullKey & "]\n" &
+            kv.value.tableVal.toTomlString(fullKey) & "\n"
+          break outer
+      result = result & kv.value.tableVal.toTomlString(fullKey)
 
 proc toTomlString*(value: TomlValueRef): string =
   ## Converts a TOML value to a TOML formatted string for output to a file.
