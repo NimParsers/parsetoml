@@ -749,7 +749,7 @@ proc parseInlineTable(state: var ParserState, tableRef: var TomlTableRef) =
         raise(newTomlError(state,
                            "key names cannot contain spaces"))
       let value = state.parseValue()
-      (tableRef[])[key] = value
+      tableRef[key] = value
 
 proc createTableDef(state: var ParserState,
                     curTableRef: var TomlTableRef,
@@ -775,10 +775,10 @@ proc parseKeyValuePair(state: var ParserState, tableRef: var TomlTableRef) =
       raise(newTomlError(state,
                          "unexpected character \"" & nextChar & "\""))
 
-    if (tableRef[]).hasKey(key):
+    if tableRef.hasKey(key):
       raise(newTomlError(state,
                          "duplicate key, \"" & key & "\" already in table"))
-    (tableRef[])[key] = value
+    tableRef[key] = value
   else:
     nextChar = state.getNextNonWhitespace(skipNoLf)
     if nextChar == ',':
@@ -805,7 +805,7 @@ proc setArrayVal(val: TomlValueRef, numOfElems: int = 0) =
 proc advanceToNextNestLevel(state: var ParserState,
                             curTableRef: var TomlTableRef,
                             tableName: string) =
-  let target = (curTableRef[])[tableName]
+  let target = curTableRef[tableName]
   case target.kind
   of TomlValueKind.Table:
     curTableRef = target.tableVal
@@ -848,7 +848,7 @@ proc createOrAppendTableArrayDef(state: var ParserState,
     let lastTableInChain = idx == high(tableNames)
 
     var newValue: TomlValueRef
-    if not hasKey(curTableRef[], tableName):
+    if not curTableRef.hasKey(tableName):
       # If this element does not exist, create it
       new(newValue)
 
@@ -861,19 +861,19 @@ proc createOrAppendTableArrayDef(state: var ParserState,
         new(newValue.arrayVal[0])
         setEmptyTableVal(newValue.arrayVal[0])
 
-        (curTableRef[])[tableName] = newValue
+        curTableRef[tableName] = newValue
         curTableRef = newValue.arrayVal[0].tableVal
       else:
         setEmptyTableVal(newValue)
 
         # Add the newly created object to the current table
-        (curTableRef[])[tableName] = newValue
+        curTableRef[tableName] = newValue
 
         # Update the pointer to the current table
         curTableRef = newValue.tableVal
     else:
       # The element exissts: is it of the right type?
-      let target = (curTableRef[])[tableName]
+      let target = curTableRef[tableName]
 
       if lastTableInChain:
         if target.kind != TomlValueKind.Array:
@@ -905,12 +905,12 @@ proc createTableDef(state: var ParserState,
     if tableName.len == 0:
       raise(newTomlError(state,
                          "empty key not allowed"))
-    if not hasKey(curTableRef[], tableName):
+    if not curTableRef.hasKey(tableName):
       new(newValue)
       setEmptyTableVal(newValue)
 
       # Add the newly created object to the current table
-      (curTableRef[])[tableName] = newValue
+      curTableRef[tableName] = newValue
 
       # Update the pointer to the current table
       curTableRef = newValue.tableVal
@@ -918,7 +918,7 @@ proc createTableDef(state: var ParserState,
       advanceToNextNestLevel(state, curTableRef, tableName)
 
 proc parseStream*(inputStream: streams.Stream,
-                  fileName: string = ""): TomlTableRef =
+                  fileName: string = ""): TomlValueRef =
   ## Parses a stream of TOML formatted data into a TOML table. The optional
   ## filename is used for error messages.
   if inputStream == nil:
@@ -926,16 +926,17 @@ proc parseStream*(inputStream: streams.Stream,
       "Unable to read from the stream created from: \"" & fileName & "\", " &
       "possibly a missing file")
   var state = newParserState(inputStream, fileName)
-  new(result)
-  result[] = initOrderedTable[string, TomlValueRef]()
+  result = TomlValueRef(kind: TomlValueKind.Table)
+  new(result.tableVal)
+  result.tableVal[] = initOrderedTable[string, TomlValueRef]()
 
   # This pointer will always point to the table that should get new
   # key/value pairs found in the TOML file during parsing
-  var curTableRef = result
+  var curTableRef = result.tableVal
 
   # Unlike "curTableRef", this pointer never changes: it always
   # points to the uppermost table in the tree
-  let baseTable = result
+  let baseTable = result.tableVal
 
   var nextChar: char
   while true:
@@ -983,19 +984,19 @@ proc parseStream*(inputStream: streams.Stream,
       state.pushBackChar(nextChar)
       parseKeyValuePair(state, curTableRef)
 
-proc parseString*(tomlStr: string, fileName: string = ""): TomlTableRef =
+proc parseString*(tomlStr: string, fileName: string = ""): TomlValueRef =
   ## Parses a string of TOML formatted data into a TOML table. The optional
   ## filename is used for error messages.
   let strStream = newStringStream(tomlStr)
   result = parseStream(strStream, fileName)
 
-proc parseFile*(f: File, fileName: string = ""): TomlTableRef =
+proc parseFile*(f: File, fileName: string = ""): TomlValueRef =
   ## Parses a file of TOML formatted data into a TOML table. The optional
   ## filename is used for error messages.
   let fStream = newFileStream(f)
   result = parseStream(fStream, fileName)
 
-proc parseFile*(fileName: string): TomlTableRef =
+proc parseFile*(fileName: string): TomlValueRef =
   ## Parses the file found at fileName with TOML formatted data into a TOML
   ## table.
   let fStream = newFileStream(fileName, fmRead)
@@ -1012,6 +1013,30 @@ proc `$`*(val: TomlDateTime): string =
         ($val.zonehourshift).align(2, '0') & ":" &
         ($val.zoneminuteshift).align(2, '0'))
     )
+
+proc toTomlString*(value: TomlValueRef): string
+
+proc `$`*(val: TomlValueRef): string =
+  ## Turns whatever value into a regular Nim value representtation
+  case val.kind
+  of TomlValueKind.None:
+    result = "nil"
+  of TomlValueKind.Int:
+    result = $val.intVal
+  of TomlValueKind.Float:
+    result = $val.floatVal
+  of TomlValueKind.Bool:
+    result = $val.boolVal
+  of TomlValueKind.Datetime:
+    result = $val.datetimeVal
+  of TomlValueKind.String:
+    result = $val.stringVal
+  of TomlValueKind.Array:
+    result = ""
+    for elem in val.arrayVal:
+      result.add($(elem[]))
+  of TomlValueKind.Table:
+    result = val.toTomlString
 
 proc `$`*(val: TomlValue): string =
   ## Turns whatever value into a type and value representation, used by ``dump``
@@ -1051,352 +1076,6 @@ proc dump*(table: TomlTableRef, indentLevel: int = 0) =
         dump(val.tableVal, indentLevel + 4)
     else:
       echo space & key & " = " & $(val[])
-
-proc newNoneValue(): TomlValueRef =
-  new(result)
-  result.kind = TomlValueKind.None
-
-proc getValueFromFullAddr*(table: TomlTableRef,
-                           fullAddr: string): TomlValueRef =
-  ## Given a TOML table reference and a string address, return a
-  ## reference to the value in the table. Addresses are of the form
-  ## "a.b.c.d", where all but the last element in the dot-separated
-  ## string are tables. Elements in table arrays are indicated by the
-  ## form "a[NNN]", where NNN is an integer number.
-
-  let fieldNames = strutils.split(fullAddr, '.')
-
-  var
-    curTable: ref TomlTable = table
-    curNode: TomlValueRef
-  for idx, curFieldName in fieldNames:
-    let isLast = idx == high(fieldNames)
-    # Check if this name is a reference to an array element (e.g., "a[2]")
-    let indexPos = curFieldName.find("[")
-    if indexPos > 0 and curFieldName.endsWith("]"):
-      # This is the name of the array
-      let arrayName = curFieldName[0..indexPos-1]
-      # This is the index within the square brackets
-      let indexStr = curFieldName[indexPos+1..len(curFieldName)-2]
-      try:
-        # Within this "try..except" statement we do not check
-        # for errors
-        let index = strutils.parseInt(indexStr)
-        curNode = curTable[arrayName].arrayVal[index]
-      except:
-        return newNoneValue()
-    else:
-      if not curTable.hasKey(curFieldName):
-        return newNoneValue()
-
-      curNode = curTable[curFieldName]
-
-    if not isLast:
-      case curNode.kind
-      of TomlValueKind.Table:
-        curTable = curNode.tableVal
-      else:
-        return newNoneValue()
-
-  result = curNode
-
-template defineGetProc(name: untyped,
-                       kindVal: TomlValueKind,
-                       field: untyped,
-                       t: typeDesc,
-                       doccomment: untyped) {.dirty.} =
-  proc name*(table: TomlTableRef,
-             address: string): t =
-    doccomment
-    let node = table.getValueFromFullAddr(address)
-    if node.kind == TomlValueKind.None:
-      raise(newException(KeyError, "key \"" & address & "\" not found"))
-
-    if node.kind == kindVal:
-      result = node.field
-    else:
-      raise(newException(ValueError, "key \"" & address &
-                                   "\" has the wrong type"))
-
-template defineSetProc(name: untyped,
-                       kindVal: TomlValueKind,
-                       field: untyped,
-                       t: typeDesc,
-                       doccomment: untyped) {.dirty.} =
-  proc name*(table: TomlTableRef,
-             address: string,
-             newVal: t) =
-    doccomment
-    var node = table.getValueFromFullAddr(address)
-    if node.kind == TomlValueKind.None:
-      raise(newException(KeyError, "key \"" & address & "\" not found"))
-
-    if node.kind == kindVal:
-      node.field = newVal
-    else:
-      raise(newException(ValueError, "key \"" & address &
-                                   "\" has the wrong type"))
-
-template defineAddProc(name: untyped,
-                       kindVal: TomlValueKind,
-                       field: untyped,
-                       t: typeDesc,
-                       doccomment: untyped) {.dirty.} =
-  proc name*(table: var TomlTableRef,
-             key: string,
-             value: t) =
-    doccomment
-    var node = table.getValueFromFullAddr(key)
-    if node.kind == TomlValueKind.None:
-      (table[])[key] = TomlValueRef(kind: kindVal, field: value)
-    else:
-      raise(newException(ValueError, "key \"" & key &
-                                   "\" already exists"))
-
-template defineGetProcDefault(name: untyped,
-                              t: typeDesc,
-                              doccomment: untyped) {.dirty.} =
-  proc name*(table: TomlTableRef,
-             address: string,
-             default: t): t =
-    doccomment
-    try:
-      result = name(table, address)
-    except KeyError:
-      result = default
-
-defineGetProc(getInt, TomlValueKind.Int, intVal, int64) do:
-  ## Get an integer from the table indicated by the address string. This works
-  ## like ``getValueFromFullAddr`` but does extra validation. If there is no
-  ## value found at the address a KeyError is thrown, if it is found, but it has
-  ## the wrong type, a ValueError is thrown.
-
-defineGetProc(getFloat, TomlValueKind.Float, floatVal, float64) do:
-  ## Get a float from the table indicated by the address string. This works
-  ## like ``getValueFromFullAddr`` but does extra validation. If there is no
-  ## value found at the address a KeyError is thrown, if it is found, but it has
-  ## the wrong type, a ValueError is thrown.
-
-defineGetProc(getBool, TomlValueKind.Bool, boolVal, bool) do:
-  ## Get a boolean from the table indicated by the address string. This works
-  ## like ``getValueFromFullAddr`` but does extra validation. If there is no
-  ## value found at the address a KeyError is thrown, if it is found, but it has
-  ## the wrong type, a ValueError is thrown.
-
-defineGetProc(getString, TomlValueKind.String, stringVal, string) do:
-  ## Get a string from the table indicated by the address string. This works
-  ## like ``getValueFromFullAddr`` but does extra validation. If there is no
-  ## value found at the address a KeyError is thrown, if it is found, but it has
-  ## the wrong type, a ValueError is thrown.
-
-defineGetProc(getDateTime, TomlValueKind.DateTime, dateTimeVal,
-  TomlDateTime) do:
-  ## Get a TomlDateTime object from the table indicated by the address string.
-  ## This works like ``getValueFromFullAddr`` but does extra validation. If
-  ## there is no value found at the address a KeyError is thrown, if it is
-  ## found, but it has the wrong type, a ValueError is thrown.
-
-defineGetProc(getTable, TomlValueKind.Table, tableVal, TomlTableRef) do:
-  ## Get a sub-table from the table indicated by the address string. This works
-  ## like ``getValueFromFullAddr`` but does extra validation. If there is no
-  ## value found at the address a KeyError is thrown, if it is found, but it has
-  ## the wrong type, a ValueError is thrown.
-
-defineAddProc(addInt, TomlValueKind.Int, intVal, int64) do:
-  ## Adds an integer to the table at the given key. The key must not exist and
-  ## will throw a ValueError if it does. The key is a single-level key only, if
-  ## it contains a dot it makes a complex key.
-
-defineSetProc(setInt, TomlValueKind.Int, intVal, int64) do:
-  ## Sets an integer value in the table. This accepts a full path like
-  ## ``getInt``. If the value doesn't already exist it throws a KeyError, and if
-  ## it isn't of the same type it throws a ValueError.
-
-defineAddProc(addFloat, TomlValueKind.Float, floatVal, float64) do:
-  ## Adds a float to the table at the given key. The key must not exist and
-  ## will throw a ValueError if it does. The key is a single-level key only, if
-  ## it contains a dot it makes a complex key.
-
-defineSetProc(setFloat, TomlValueKind.Float, floatVal, float64) do:
-  ## Sets a float value in the table. This accepts a full path like
-  ## ``getFloat``. If the value doesn't already exist it throws a KeyError, and
-  ## if it isn't of the same type it throws a ValueError.
-
-defineAddProc(addBool, TomlValueKind.Bool, boolVal, bool) do:
-  ## Adds a bool to the table at the given key. The key must not exist and
-  ## will throw a ValueError if it does. The key is a single-level key only, if
-  ## it contains a dot it makes a complex key.
-
-defineSetProc(setBool, TomlValueKind.Bool, stringVal, string) do:
-  ## Sets a string value in the table. This accepts a full path like
-  ## ``getBool``. If the value doesn't already exist it throws a KeyError, and
-  ## if it isn't of the same type it throws a ValueError.
-
-defineAddProc(addString, TomlValueKind.String, stringVal, string) do:
-  ## Adds a string to the table at the given key. The key must not exist and
-  ## will throw a ValueError if it does. The key is a single-level key only, if
-  ## it contains a dot it makes a complex key.
-
-defineSetProc(setString, TomlValueKind.String, stringVal, string) do:
-  ## Sets a string value in the table. This accepts a full path like
-  ## ``getString``. If the value doesn't already exist it throws a KeyError, and
-  ## if it isn't of the same type it throws a ValueError.
-
-defineAddProc(addDateTime, TomlValueKind.DateTime, dateTimeVal,
-  TomlDateTime) do:
-  ## Adds a TomlDateTime to the table at the given key. The key must not exist
-  ## and will throw a ValueError if it does. The key is a single-level key only,
-  ## if it contains a dot it makes a complex key.
-
-defineSetProc(setDateTime, TomlValueKind.DateTime, dateTimeVal,
-  TomlDateTime) do:
-  ## Sets a dateTime value in the table. This accepts a full path like
-  ## ``getDateTime``. If the value doesn't already exist it throws a KeyError,
-  ## and if it isn't of the same type it throws a ValueError.
-
-proc addTable*(table: var TomlTableRef, key: string): TomlTableRef =
-  ## Adds a new empty sub-table to the table at the given key. The key must not
-  ## exist and will throw a ValueError if it does. The key is a single-level key
-  ## only, if it contains a dot it makes a complex key. This returns the newly
-  ## added sub-table so you can add new entries to it.
-  var node = table.getValueFromFullAddr(key)
-  if node.kind == TomlValueKind.None:
-    var newTable: TomlValueRef
-    new(newTable)
-    setEmptyTableVal(newTable)
-    (table[])[key] = newTable
-    return newTable.tableVal
-  else:
-    raise(newException(ValueError, "key \"" & key &
-                                 "\" already exists"))
-
-defineGetProcDefault(getInt, int64) do:
-  ## Similar to `getInt` but will return the default value if no value with
-  ## that name was found. This will still throw ValueErrors if the value found
-  ## at the address has the wrong type.
-
-defineGetProcDefault(getFloat, float64) do:
-  ## Similar to `getFloat` but will return the default value if no value with
-  ## that name was found. This will still throw ValueErrors if the value found
-  ## at the address has the wrong type.
-
-defineGetProcDefault(getBool, bool) do:
-  ## Similar to `getBool` but will return the default value if no value with
-  ## that name was found. This will still throw ValueErrors if the value found
-  ## at the address has the wrong type.
-
-defineGetProcDefault(getString, string) do:
-  ## Similar to `getString` but will return the default value if no value with
-  ## that name was found. This will still throw ValueErrors if the value found
-  ## at the address has the wrong type.
-
-template defineGetArray(name: untyped,
-                        kindVal: TomlValueKind,
-                        field: untyped,
-                        t: typeDesc,
-                        doccomment: untyped) {.dirty.} =
-  proc name*(table: TomlTableRef,
-             address: string): seq[t] =
-    doccomment
-    let node = table.getValueFromFullAddr(address)
-    case node.kind
-    of TomlValueKind.None:
-      raise(newException(KeyError, "key \"" & address & "\" not found"))
-    of TomlValueKind.Array:
-      let arr = node.arrayVal
-      if arr.len() == 0:
-        result = newSeq[t](0)
-        return
-
-      if arr[0].kind != kindVal:
-        raise(newException(ValueError, "the array elements of \"" &
-                                     address &
-                                     "\" have the wrong type (" &
-                                     $kindVal & ")"))
-
-      result = newSeq[t](len(arr))
-      for idx, elem in arr:
-        result[idx] = elem.field
-    else:
-      raise(newException(ValueError, "key \"" & address &
-                                   "\" is not an array"))
-
-  iterator name*(table: TomlTableRef,
-             address: string): var t =
-    doccomment
-    let node = table.getValueFromFullAddr(address)
-    case node.kind
-    of TomlValueKind.None:
-      raise(newException(KeyError, "key \"" & address & "\" not found"))
-    of TomlValueKind.Array:
-      let arr = node.arrayVal
-      if arr[0].kind != kindVal:
-        raise(newException(ValueError, "the array elements of \"" &
-                                     address &
-                                     "\" have the wrong type (" &
-                                     $kindVal & ")"))
-
-      for idx, elem in arr:
-        yield elem.field
-    else:
-      raise(newException(ValueError, "key \"" & address &
-                                   "\" is not an array"))
-
-defineGetArray(getIntArray, TomlValueKind.Int, intVal, int64) do:
-  ## Get an array of integer values from the table indicated by the address
-  ## string. This works like ``getValueFromFullAddr`` but does extra validation.
-  ## If there is no value found at the address a KeyError is thrown, if it is
-  ## found, but it is not an array or the values in the array have the wrong
-  ## type, a ValueError is thrown. Note that when not used as an iterator this
-  ## unpacks the values from the internal representation and creates a new
-  ## sequence. When using as an iterator it will simply yield each entry.
-
-defineGetArray(getFloatArray, TomlValueKind.Float, floatVal, float64) do:
-  ## Get an array of float values from the table indicated by the address
-  ## string. This works like ``getValueFromFullAddr`` but does extra validation.
-  ## If there is no value found at the address a KeyError is thrown, if it is
-  ## found, but it is not an array or the values in the array have the wrong
-  ## type, a ValueError is thrown. Note that when not used as an iterator this
-  ## unpacks the values from the internal representation and creates a new
-  ## sequence. When using as an iterator it will simply yield each entry.
-
-defineGetArray(getBoolArray, TomlValueKind.Bool, boolVal, bool) do:
-  ## Get an array of boolean values from the table indicated by the address
-  ## string. This works like ``getValueFromFullAddr`` but does extra validation.
-  ## If there is no value found at the address a KeyError is thrown, if it is
-  ## found, but it is not an array or the values in the array have the wrong
-  ## type, a ValueError is thrown. Note that when not used as an iterator this
-  ## unpacks the values from the internal representation and creates a new
-  ## sequence. When using as an iterator it will simply yield each entry.
-
-defineGetArray(getStringArray, TomlValueKind.String, stringVal, string) do:
-  ## Get an array of string values from the table indicated by the address
-  ## string. This works like ``getValueFromFullAddr`` but does extra validation.
-  ## If there is no value found at the address a KeyError is thrown, if it is
-  ## found, but it is not an array or the values in the array have the wrong
-  ## type, a ValueError is thrown. Note that when not used as an iterator this
-  ## unpacks the values from the internal representation and creates a new
-  ## sequence. When using as an iterator it will simply yield each entry.
-
-defineGetArray(getDateTimeArray, TomlValueKind.DateTime,
-               dateTimeVal, TomlDateTime) do:
-  ## Get an array of DateTime objects from the table indicated by the address
-  ## string. This works like ``getValueFromFullAddr`` but does extra validation.
-  ## If there is no value found at the address a KeyError is thrown, if it is
-  ## found, but it is not an array or the values in the array have the wrong
-  ## type, a ValueError is thrown. Note that when not used as an iterator this
-  ## unpacks the values from the internal representation and creates a new
-  ## sequence. When using as an iterator it will simply yield each entry.
-
-defineGetArray(getTableArray, TomlValueKind.Table,
-               tableVal, TomlTableRef) do:
-  ## Get an array of sub-tables from the table indicated by the address string.
-  ## This works like ``getValueFromFullAddr`` but does extra validation. If
-  ## there is no value found at the address a KeyError is thrown, if it is
-  ## found, but it is not an array or the values in the array have the wrong
-  ## type, a ValueError is thrown. Note that when not used as an iterator this
-  ## unpacks the values from the internal representation and creates a new
-  ## sequence. When using as an iterator it will simply yield each entry.
 
 import json, sequtils
 
@@ -1443,7 +1122,6 @@ proc toKey(str: string): string =
       return "\"" & str & "\""
   str
 
-proc toTomlString*(value: TomlValueRef): string
 
 proc toTomlString*(value: TomlTableRef, parents = ""): string =
   ## Converts a TOML table to a TOML formatted string for output to a file.
@@ -1489,478 +1167,426 @@ proc toTomlString*(value: TomlValueRef): string =
   else:
     "UNKNOWN"
 
-when isMainModule:
-  template assertEq(T1: untyped, T2: untyped) =
-    bind instantiationInfo
-    mixin failedAssertImpl
-    when compileOption("assertions"):
-      {.line.}:
-        let val1 = T1
-        let val2 = T2
-        if not (val1 == val2):
-          failedAssertImpl(astToStr(T1) & " != " & astToStr(T2) &
-                           " (" &
-                           $(val1) & " != " & $(val2) & ')')
+proc newTString*(s: string): TomlValueRef =
+  ## Creates a new `TomlValueKind.String TomlValueRef`.
+  new(result)
+  result.kind = TomlValueKind.String
+  result.stringVal = s
+
+proc newTStringMove(s: string): TomlValueRef =
+  new(result)
+  result.kind = TomlValueKind.String
+  shallowCopy(result.stringVal, s)
+
+proc newTInt*(n: int64): TomlValueRef =
+  ## Creates a new `TomlValueKind.Int TomlValueRef`.
+  new(result)
+  result.kind = TomlValueKind.Int
+  result.intVal  = n
+
+proc newTFloat*(n: float): TomlValueRef =
+  ## Creates a new `TomlValueKind.Float TomlValueRef`.
+  new(result)
+  result.kind = TomlValueKind.Float
+  result.floatVal  = n
+
+proc newTBool*(b: bool): TomlValueRef =
+  ## Creates a new `TomlValueKind.Bool TomlValueRef`.
+  new(result)
+  result.kind = TomlValueKind.Bool
+  result.boolVal = b
+
+proc newTNull*(): TomlValueRef =
+  ## Creates a new `JNull TomlValueRef`.
+  new(result)
+  result.kind = TomlValueKind.None
+
+proc newTTable*(): TomlValueRef =
+  ## Creates a new `TomlValueKind.Table TomlValueRef`
+  new(result)
+  result.kind = TomlValueKind.Table
+  new(result.tableVal)
+  result.tableVal[] = initOrderedTable[string, TomlValueRef](4)
+
+proc newTArray*(): TomlValueRef =
+  ## Creates a new `TomlValueKind.Array TomlValueRef`
+  new(result)
+  result.kind = TomlValueKind.Array
+  result.arrayVal = @[]
+
+proc getStr*(n: TomlValueRef, default: string = ""): string =
+  ## Retrieves the string value of a `TomlValueKind.String TomlValueRef`.
+  ##
+  ## Returns ``default`` if ``n`` is not a ``TomlValueKind.String``, or if ``n`` is nil.
+  if n.isNil or n.kind != TomlValueKind.String: return default
+  else: return n.stringVal
+
+proc getInt*(n: TomlValueRef, default: int = 0): int =
+  ## Retrieves the int value of a `TomlValueKind.Int TomlValueRef`.
+  ##
+  ## Returns ``default`` if ``n`` is not a ``TomlValueKind.Int``, or if ``n`` is nil.
+  if n.isNil or n.kind != TomlValueKind.Int: return default
+  else: return int(n.intVal)
+
+proc getBiggestInt*(n: TomlValueRef, default: int64 = 0): int64 =
+  ## Retrieves the int64 value of a `TomlValueKind.Int TomlValueRef`.
+  ##
+  ## Returns ``default`` if ``n`` is not a ``TomlValueKind.Int``, or if ``n`` is nil.
+  if n.isNil or n.kind != TomlValueKind.Int: return default
+  else: return n.intVal
+
+proc getFloat*(n: TomlValueRef, default: float = 0.0): float =
+  ## Retrieves the float value of a `TomlValueKind.Float TomlValueRef`.
+  ##
+  ## Returns ``default`` if ``n`` is not a ``TomlValueKind.Float`` or ``TomlValueKind.Int``, or if ``n`` is nil.
+  if n.isNil: return default
+  case n.kind
+  of TomlValueKind.Float: return n.floatVal
+  of TomlValueKind.Int: return float(n.intVal)
+  else: return default
+
+proc getBool*(n: TomlValueRef, default: bool = false): bool =
+  ## Retrieves the bool value of a `TomlValueKind.Bool TomlValueRef`.
+  ##
+  ## Returns ``default`` if ``n`` is not a ``TomlValueKind.Bool``, or if ``n`` is nil.
+  if n.isNil or n.kind != TomlValueKind.Bool: return default
+  else: return n.boolVal
+
+proc getTable*(n: TomlValueRef,
+    default = new(TomlTableRef)):
+        TomlTableRef =
+  ## Retrieves the key, value pairs of a `TomlValueKind.Table TomlValueRef`.
+  ##
+  ## Returns ``default`` if ``n`` is not a ``TomlValueKind.Table``, or if ``n`` is nil.
+  if n.isNil or n.kind != TomlValueKind.Table: return default
+  else: return n.tableVal
+
+proc getElems*(n: TomlValueRef, default: seq[TomlValueRef] = @[]): seq[TomlValueRef] =
+  ## Retrieves the int value of a `TomlValueKind.Array TomlValueRef`.
+  ##
+  ## Returns ``default`` if ``n`` is not a ``TomlValueKind.Array``, or if ``n`` is nil.
+  if n.isNil or n.kind != TomlValueKind.Array: return default
+  else: return n.arrayVal
+
+proc add*(father, child: TomlValueRef) =
+  ## Adds `child` to a TomlValueKind.Array node `father`.
+  assert father.kind == TomlValueKind.Array
+  father.arrayVal.add(child)
+
+proc add*(obj: TomlValueRef, key: string, val: TomlValueRef) =
+  ## Sets a field from a `TomlValueKind.Table`.
+  assert obj.kind == TomlValueKind.Table
+  obj.tableVal[key] = val
+
+proc `?`*(s: string): TomlValueRef =
+  ## Generic constructor for TOML data. Creates a new `TomlValueKind.String TomlValueRef`.
+  new(result)
+  if s.isNil: return
+  result.kind = TomlValueKind.String
+  result.stringVal = s
+
+proc `?`*(n: int64): TomlValueRef =
+  ## Generic constructor for TOML data. Creates a new `TomlValueKind.Int TomlValueRef`.
+  new(result)
+  result.kind = TomlValueKind.Int
+  result.intVal  = n
+
+proc `?`*(n: float): TomlValueRef =
+  ## Generic constructor for TOML data. Creates a new `TomlValueKind.Float TomlValueRef`.
+  new(result)
+  result.kind = TomlValueKind.Float
+  result.floatVal  = n
+
+proc `?`*(b: bool): TomlValueRef =
+  ## Generic constructor for TOML data. Creates a new `TomlValueKind.Bool TomlValueRef`.
+  new(result)
+  result.kind = TomlValueKind.Bool
+  result.boolVal = b
+
+proc `?`*(keyVals: openArray[tuple[key: string, val: TomlValueRef]]): TomlValueRef =
+  ## Generic constructor for TOML data. Creates a new `TomlValueKind.Table TomlValueRef`
+  if keyvals.len == 0: return newTArray()
+  result = newTTable()
+  for key, val in items(keyVals): result.tableVal[key] = val
+
+template `?`*(j: TomlValueRef): TomlValueRef = j
+
+proc `?`*[T](elements: openArray[T]): TomlValueRef =
+  ## Generic constructor for TOML data. Creates a new `TomlValueKind.Array TomlValueRef`
+  result = newTArray()
+  for elem in elements: result.add(?elem)
+
+when false:
+  # For 'consistency' we could do this, but that only pushes people further
+  # into that evil comfort zone where they can use Nim without understanding it
+  # causing problems later on.
+  proc `?`*(elements: set[bool]): TomlValueRef =
+    ## Generic constructor for TOML data. Creates a new `TomlValueKind.Table TomlValueRef`.
+    ## This can only be used with the empty set ``{}`` and is supported
+    ## to prevent the gotcha ``%*{}`` which used to produce an empty
+    ## TOML array.
+    result = newTTable()
+    assert false notin elements, "usage error: only empty sets allowed"
+    assert true notin elements, "usage error: only empty sets allowed"
+
+proc `?`*(o: object): TomlValueRef =
+  ## Generic constructor for TOML data. Creates a new `TomlValueKind.Table TomlValueRef`
+  result = newTTable()
+  for k, v in o.fieldPairs: result[k] = ?v
+
+proc `?`*(o: ref object): TomlValueRef =
+  ## Generic constructor for TOML data. Creates a new `TomlValueKind.Table TomlValueRef`
+  if o.isNil:
+    result = newTNull()
+  else:
+    result = ?(o[])
+
+proc `?`*(o: enum): TomlValueRef =
+  ## Construct a TomlValueRef that represents the specified enum value as a
+  ## string. Creates a new ``TomlValueKind.String TomlValueRef``.
+  result = ?($o)
+
+import macros
+
+proc toToml(x: NimNode): NimNode {.compiletime.} =
+  case x.kind
+  of nnkBracket: # array
+    if x.len == 0: return newCall(bindSym"newTArray")
+    result = newNimNode(nnkBracket)
+    for i in 0 ..< x.len:
+      result.add(toToml(x[i]))
+    result = newCall(bindSym("?", brOpen), result)
+  of nnkTableConstr: # object
+    if x.len == 0: return newCall(bindSym"newTTable")
+    result = newNimNode(nnkTableConstr)
+    for i in 0 ..< x.len:
+      x[i].expectKind nnkExprColonExpr
+      result.add newTree(nnkExprColonExpr, x[i][0], toToml(x[i][1]))
+    result = newCall(bindSym("?", brOpen), result)
+  of nnkCurly: # empty object
+    x.expectLen(0)
+    result = newCall(bindSym"newTTable")
+  of nnkNilLit:
+    result = newCall(bindSym"newTNull")
+  else:
+    result = newCall(bindSym("?", brOpen), x)
+
+macro `?*`*(x: untyped): untyped =
+  ## Convert an expression to a TomlValueRef directly, without having to specify
+  ## `?` for every element.
+  result = toToml(x)
+  echo result.repr
+
+proc toTomlValue(x: NimNode): NimNode {.compileTime.} =
+  newCall(bindSym("?", brOpen), x)
+
+proc toTomlNew(x: NimNode): NimNode {.compiletime.} =
+  echo x.treeRepr
+  var
+    i = 0
+    curTable: NimNode = nil
+  while i < x.len:
+    echo x[i].kind
+    case x[i].kind:
+    of nnkAsgn:
+      if curTable.isNil:
+        curTable = newNimNode(nnkTableConstr)
+        result = curTable
+      curTable.add newTree(nnkExprColonExpr, newLit($x[i][0]), toTomlValue(x[i][1]))
+    of nnkBracket:
+      if curTable.isNil:
+        curTable = newNimNode(nnkTableConstr)
+        result = curTable
+      else:
+        var table = newNimNode(nnkTableConstr)
+        result.add newTree(nnkExprColonExpr, newLit($x[i][0]), newCall(bindSym("?", brOpen), table))
+        curTable = table
+    else: discard
+    i += 1
+  result = newCall(bindSym("?", brOpen), result)
+
+macro `parseToml`*(x: untyped): untyped =
+  ## Convert an expression to a TomlValueRef directly, without having to specify
+  ## `?` for every element.
+  result = toTomlNew(x)
+  echo result.repr
+
+proc `==`* (a, b: TomlValueRef): bool =
+  ## Check two nodes for equality
+  if a.isNil:
+    if b.isNil: return true
+    return false
+  elif b.isNil or a.kind != b.kind:
+    return false
+  else:
+    case a.kind
+    of TomlValueKind.String:
+      result = a.stringVal == b.stringVal
+    of TomlValueKind.Int:
+      result = a.intVal == b.intVal
+    of TomlValueKind.Float:
+      result = a.floatVal == b.floatVal
+    of TomlValueKind.Bool:
+      result = a.boolVal == b.boolVal
+    of TomlValueKind.None:
+      result = true
+    of TomlValueKind.Array:
+      result = a.arrayVal == b.arrayVal
+    of TomlValueKind.Table:
+      # we cannot use OrderedTable's equality here as
+      # the order does not matter for equality here.
+      if a.tableVal.len != b.tableVal.len: return false
+      for key, val in a.tableVal:
+        if not b.tableVal.hasKey(key): return false
+        if b.tableVal[key] != val: return false
+      result = true
+    of TomlValueKind.DateTime:
+      result =
+        a.dateTimeVal.year == b.dateTimeVal.year and
+        a.dateTimeVal.month == b.dateTimeVal.month and
+        a.dateTimeVal.day == b.dateTimeVal.day and
+        a.dateTimeVal.hour == b.dateTimeVal.hour and
+        a.dateTimeVal.minute == b.dateTimeVal.minute and
+        a.dateTimeVal.second == b.dateTimeVal.second and
+        a.dateTimeVal.shift == b.dateTimeVal.shift and
+        (a.dateTimeVal.shift == true and
+          (a.dateTimeVal.isShiftPositive == b.dateTimeVal.isShiftPositive and
+          a.dateTimeVal.zoneHourShift == b.dateTimeVal.zoneHourShift and
+          a.dateTimeVal.zoneMinuteShift == b.dateTimeVal.zoneMinuteShift)) or
+        a.dateTimeVal.shift == false
+
+import hashes
+
+proc hash*(n: OrderedTable[string, TomlValueRef]): Hash {.noSideEffect.}
+
+proc hash*(n: TomlValueRef): Hash =
+  ## Compute the hash for a TOML node
+  case n.kind
+  of TomlValueKind.Array:
+    result = hash(n.arrayVal)
+  of TomlValueKind.Table:
+    result = hash(n.tableVal[])
+  of TomlValueKind.Int:
+    result = hash(n.intVal)
+  of TomlValueKind.Float:
+    result = hash(n.floatVal)
+  of TomlValueKind.Bool:
+    result = hash(n.boolVal.int)
+  of TomlValueKind.String:
+    result = hash(n.stringVal)
+  of TomlValueKind.None:
+    result = Hash(0)
+  of TomlValueKind.DateTime:
+    result = hash($n.dateTimeVal)
+
+proc hash*(n: OrderedTable[string, TomlValueRef]): Hash =
+  for key, val in n:
+    result = result xor (hash(key) !& hash(val))
+  result = !$result
+
+proc len*(n: TomlValueRef): int =
+  ## If `n` is a `TomlValueKind.Array`, it returns the number of elements.
+  ## If `n` is a `TomlValueKind.Table`, it returns the number of pairs.
+  ## Else it returns 0.
+  case n.kind
+  of TomlValueKind.Array: result = n.arrayVal.len
+  of TomlValueKind.Table: result = n.tableVal.len
+  else: discard
+
+proc `[]`*(node: TomlValueRef, name: string): TomlValueRef {.inline.} =
+  ## Gets a field from a `TomlValueKind.Table`, which must not be nil.
+  ## If the value at `name` does not exist, raises KeyError.
+  assert(not isNil(node))
+  assert(node.kind == TomlValueKind.Table)
+  result = node.tableVal[name]
+
+proc `[]`*(node: TomlValueRef, index: int): TomlValueRef {.inline.} =
+  ## Gets the node at `index` in an Array. Result is undefined if `index`
+  ## is out of bounds, but as long as array bound checks are enabled it will
+  ## result in an exception.
+  assert(not isNil(node))
+  assert(node.kind == TomlValueKind.Array)
+  return node.arrayVal[index]
+
+proc hasKey*(node: TomlValueRef, key: string): bool =
+  ## Checks if `key` exists in `node`.
+  assert(node.kind == TomlValueKind.Table)
+  result = node.tableVal.hasKey(key)
+
+proc contains*(node: TomlValueRef, key: string): bool =
+  ## Checks if `key` exists in `node`.
+  assert(node.kind == TomlValueKind.Table)
+  node.tableVal.hasKey(key)
+
+proc contains*(node: TomlValueRef, val: TomlValueRef): bool =
+  ## Checks if `val` exists in array `node`.
+  assert(node.kind == TomlValueKind.Array)
+  find(node.arrayVal, val) >= 0
+
+proc existsKey*(node: TomlValueRef, key: string): bool {.deprecated.} = node.hasKey(key)
+  ## Deprecated for `hasKey`
+
+proc `[]=`*(obj: TomlValueRef, key: string, val: TomlValueRef) {.inline.} =
+  ## Sets a field from a `TomlValueKind.Table`.
+  assert(obj.kind == TomlValueKind.Table)
+  obj.tableVal[key] = val
+
+proc `{}`*(node: TomlValueRef, keys: varargs[string]): TomlValueRef =
+  ## Traverses the node and gets the given value. If any of the
+  ## keys do not exist, returns ``nil``. Also returns ``nil`` if one of the
+  ## intermediate data structures is not an object.
+  result = node
+  for key in keys:
+    if isNil(result) or result.kind != TomlValueKind.Table:
+      return nil
+    result = result.tableVal.getOrDefault(key)
+
+proc getOrDefault*(node: TomlValueRef, key: string): TomlValueRef =
+  ## Gets a field from a `node`. If `node` is nil or not an object or
+  ## value at `key` does not exist, returns nil
+  if not isNil(node) and node.kind == TomlValueKind.Table:
+    result = node.tableVal.getOrDefault(key)
+
+template simpleGetOrDefault*{`{}`(node, [key])}(node: TomlValueRef, key: string): TomlValueRef = node.getOrDefault(key)
+
+proc `{}=`*(node: TomlValueRef, keys: varargs[string], value: TomlValueRef) =
+  ## Traverses the node and tries to set the value at the given location
+  ## to ``value``. If any of the keys are missing, they are added.
+  var node = node
+  for i in 0..(keys.len-2):
+    if not node.hasKey(keys[i]):
+      node[keys[i]] = newTTable()
+    node = node[keys[i]]
+  node[keys[keys.len-1]] = value
+
+proc delete*(obj: TomlValueRef, key: string) =
+  ## Deletes ``obj[key]``.
+  assert(obj.kind == TomlValueKind.Table)
+  if not obj.tableVal.hasKey(key):
+    raise newException(IndexError, "key not in object")
+  obj.tableVal.del(key)
+
+proc copy*(p: TomlValueRef): TomlValueRef =
+  ## Performs a deep copy of `a`.
+  case p.kind
+  of TomlValueKind.String:
+    result = newTString(p.stringVal)
+  of TomlValueKind.Int:
+    result = newTInt(p.intVal)
+  of TomlValueKind.Float:
+    result = newTFloat(p.floatVal)
+  of TomlValueKind.Bool:
+    result = newTBool(p.boolVal)
+  of TomlValueKind.None:
+    result = newTNull()
+  of TomlValueKind.Table:
+    result = newTTable()
+    for key, val in pairs(p.tableVal):
+      result.tableVal[key] = copy(val)
+  of TomlValueKind.Array:
+    result = newTArray()
+    for i in items(p.arrayVal):
+      result.arrayVal.add(copy(i))
+  of TomlValueKind.DateTime:
+    deepCopy(result, p)
 
-  # Here come a few tests
-
-  # pow10
-  assert pow10(5.0, 1) == 50.0
-  assert pow10(5.0, 2) == 500.0
-  assert pow10(5.0, 3) == 5000.0
-
-  assert pow10(100.0, -1) == 10.0
-  assert pow10(100.0, -2) == 1.0
-
-  # getNextChar
-
-  block:
-    var s = newParserState(newStringStream("""
-ab c
-de"""))
-    assert(s.line == 1 and s.column == 1)
-
-    assertEq(s.getNextChar(), 'a')
-    assert(s.line == 1 and s.column == 2)
-
-    assertEq(s.getNextChar(), 'b')
-    assert(s.line == 1 and s.column == 3)
-
-    assertEq(s.getNextChar(), ' ')
-    assert(s.line == 1 and s.column == 4)
-
-    assertEq(s.getNextChar(), 'c')
-    assert(s.line == 1 and s.column == 5)
-
-    # Let's add some juice to this boring test...
-    s.pushBackChar('d')
-    assertEq(s.getNextChar(), 'd')
-    assert(s.line == 1 and s.column == 5)
-
-    assertEq(s.getNextChar(), '\l')
-    assert(s.line == 2 and s.column == 1)
-
-    assertEq(s.getNextChar(), 'd')
-    assert(s.line == 2 and s.column == 2)
-
-    assertEq(s.getNextChar(), 'e')
-    assert(s.line == 2 and s.column == 3)
-
-    assertEq(s.getNextChar(), '\0')
-
-  # getNextNonWhitespace
-
-  block:
-    var s = newParserState(newStringStream("ab c\td # Comment\ne\rf"))
-
-    assert(s.line == 1 and s.column == 1)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), 'a')
-    assert(s.line == 1 and s.column == 2)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), 'b')
-    assert(s.line == 1 and s.column == 3)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), 'c')
-    assert(s.line == 1 and s.column == 5)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), 'd')
-    assert(s.line == 1 and s.column == 7)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), '\l')
-    assert(s.line == 2 and s.column == 1)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), 'e')
-    assert(s.line == 2 and s.column == 2)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), 'f')
-    assert(s.line == 2 and s.column == 3)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), '\0')
-
-
-  block:
-    var s = newParserState(newStringStream("ab c\td # Comment\ne\rf"))
-
-    assert(s.line == 1 and s.column == 1)
-
-    assertEq(s.getNextNonWhitespace(skipLf), 'a')
-    assert(s.line == 1 and s.column == 2)
-
-    assertEq(s.getNextNonWhitespace(skipLf), 'b')
-    assert(s.line == 1 and s.column == 3)
-
-    assertEq(s.getNextNonWhitespace(skipLf), 'c')
-    assert(s.line == 1 and s.column == 5)
-
-    assertEq(s.getNextNonWhitespace(skipLf), 'd')
-    assert(s.line == 1 and s.column == 7)
-
-    assertEq(s.getNextNonWhitespace(skipLf), 'e')
-    assert(s.line == 2 and s.column == 2)
-
-    assertEq(s.getNextNonWhitespace(skipLf), 'f')
-    assert(s.line == 2 and s.column == 3)
-
-    assertEq(s.getNextNonWhitespace(skipLf), '\0')
-
-  # charToInt
-
-  assertEq(charToInt('0', base10), 0)
-  assertEq(charToInt('1', base10), 1)
-  assertEq(charToInt('2', base10), 2)
-  assertEq(charToInt('3', base10), 3)
-  assertEq(charToInt('4', base10), 4)
-  assertEq(charToInt('5', base10), 5)
-  assertEq(charToInt('6', base10), 6)
-  assertEq(charToInt('7', base10), 7)
-  assertEq(charToInt('8', base10), 8)
-  assertEq(charToInt('9', base10), 9)
-
-  assertEq(charToInt('0', base16), 0)
-  assertEq(charToInt('1', base16), 1)
-  assertEq(charToInt('2', base16), 2)
-  assertEq(charToInt('3', base16), 3)
-  assertEq(charToInt('4', base16), 4)
-  assertEq(charToInt('5', base16), 5)
-  assertEq(charToInt('6', base16), 6)
-  assertEq(charToInt('7', base16), 7)
-  assertEq(charToInt('8', base16), 8)
-  assertEq(charToInt('9', base16), 9)
-  assertEq(charToInt('a', base16), 10)
-  assertEq(charToInt('b', base16), 11)
-  assertEq(charToInt('c', base16), 12)
-  assertEq(charToInt('d', base16), 13)
-  assertEq(charToInt('e', base16), 14)
-  assertEq(charToInt('f', base16), 15)
-  assertEq(charToInt('A', base16), 10)
-  assertEq(charToInt('B', base16), 11)
-  assertEq(charToInt('C', base16), 12)
-  assertEq(charToInt('D', base16), 13)
-  assertEq(charToInt('E', base16), 14)
-  assertEq(charToInt('F', base16), 15)
-
-  # parseInt
-
-  block:
-    var s = newParserState(newStringStream("1063"))
-    assertEq(parseInt(s, base10, LeadingChar.DenyZero), 1063)
-
-  block:
-    var s = newParserState(newStringStream("fFa05B"))
-    assertEq(parseInt(s, base16, LeadingChar.DenyZero), 16752731)
-
-  block:
-    var s = newParserState(newStringStream("01063"))
-
-    try:
-      discard parseInt(s, base10, LeadingChar.DenyZero)
-      assert false, "An exception should have been raised here!"
-    except:
-      discard
-
-  block:
-    var s = newParserState(newStringStream("01063"))
-
-    assertEq(parseInt(s, base10, LeadingChar.AllowZero), 1063)
-
-  # parseDecimalPart
-
-  block:
-    var s = newParserState(newStringStream("24802"))
-    # The result should be 0.24802. We check it using integer
-    # arithmetic, instead of using the |x - x_expected| < eps...
-    assertEq(int(100000 * parseDecimalPart(s)), 24802)
-
-
-  # parseDateTimePart
-
-  block:
-    # We do not include the "YYYY-" part, see the implementation
-    # of "praseDateTime" to know why
-    var s = newParserState(newStringStream("12-06T11:34:01+13:24"))
-    var value: TomlDateTime
-    parseDateTimePart(s, value)
-
-    assertEq(value.month, 12)
-    assertEq(value.day, 6)
-    assertEq(value.hour, 11)
-    assertEq(value.minute, 34)
-    assertEq(value.second, 01)
-    assertEq(value.shift, true)
-    assertEq(value.isShiftPositive, true)
-    assertEq(value.zoneHourShift, 13)
-    assertEq(value.zoneMinuteShift, 24)
-
-  block:
-    var s = newParserState(newStringStream("12-06T11:34:01Z"))
-    var value: TomlDateTime
-    parseDateTimePart(s, value)
-
-    assertEq(value.month, 12)
-    assertEq(value.day, 6)
-    assertEq(value.hour, 11)
-    assertEq(value.minute, 34)
-    assertEq(value.second, 01)
-    assertEq(value.shift, false)
-
-  block:
-    # We do not include the "YYYY-" part, see the implementation
-    # of "praseDateTime" to know why
-    var s = newParserState(newStringStream("12-06T11:34:01-13:24"))
-    var value: TomlDateTime
-    parseDateTimePart(s, value)
-
-    assertEq(value.month, 12)
-    assertEq(value.day, 6)
-    assertEq(value.hour, 11)
-    assertEq(value.minute, 34)
-    assertEq(value.second, 01)
-    assertEq(value.shift, true)
-    assertEq(value.isShiftPositive, false)
-    assertEq(value.zoneHourShift, 13)
-    assertEq(value.zoneMinuteShift, 24)
-
-  # parseSingleLineString
-
-  block:
-    var s = newParserState(newStringStream("double string\t\"blahblah"))
-    assert parseSingleLineString(s, StringType.Basic) == "double string\t"
-
-  block:
-    # Escape sequences
-    var s = newParserState(newStringStream('\b' & '\f' & '\l' & '\r' & '\\' &
-      '\"' & '\"'))
-    assert parseSingleLineString(s, StringType.Basic) == "\b\f\l\r\""
-
-  block:
-    # Unicode
-    var s = newParserState(newStringStream(r"\u59\U2126\u1f600"""))
-    assert parseSingleLineString(s, StringType.Basic) == "YΩ😀"
-
-  # parseMultiLineString
-
-  block:
-    var s = newParserState(newStringStream("\ntest\"\"\"blah"))
-    # TODO: add tests here
-    discard parseMultiLineString(s, StringType.Basic)
-
-  # parseArray
-
-  block:
-    var s = newParserState(newStringStream("1, 2, 3, 4]blah"))
-    let arr = parseArray(s)
-
-    assertEq(arr.len(), 4)
-    assert arr[0].kind == TomlValueKind.Int and arr[0].intVal == 1
-    assert arr[1].kind == TomlValueKind.Int and arr[1].intVal == 2
-    assert arr[2].kind == TomlValueKind.Int and arr[2].intVal == 3
-    assert arr[3].kind == TomlValueKind.Int and arr[3].intVal == 4
-
-  block:
-    var s = newParserState(newStringStream("\"a\", \"bb\", \"ccc\"]blah"))
-    let arr = parseArray(s)
-
-    assertEq(arr.len(), 3)
-    assert arr[0].kind == TomlValueKind.String and arr[0].stringVal == "a"
-    assert arr[1].kind == TomlValueKind.String and arr[1].stringVal == "bb"
-    assert arr[2].kind == TomlValueKind.String and arr[2].stringVal == "ccc"
-
-  block:
-    # Array elements of heterogeneous types are forbidden
-    var s = newParserState(newStringStream("1, 2.0, \"foo\"]blah"))
-
-    try:
-      discard parseArray(s) # This should raise an exception
-      assert false # If we reach this, there's something wrong
-    except TomlError:
-      discard # That's expected
-
-  # Arrays of tables (they're tricky to implement!)
-
-  try:
-    let table = parseString("""
-alone = 1
-
-[input]
-flags = true
-
-[output]
-int_value = 6
-str_value = "This is a test"
-
-[deeply.nested]
-hello_there = 1.0e+2
-""")
-
-    assertEq(table.len(), 4)
-    assertEq(table["alone"].kind, TomlValueKind.Int)
-    assertEq(table["alone"].intVal, 1)
-
-    block:
-      assertEq(table["input"].kind, TomlValueKind.Table)
-      let inputTable = table["input"].tableVal
-      assertEq(inputTable.len(), 1)
-      assertEq(inputTable["flags"].kind, TomlValueKind.Bool)
-      assertEq(inputTable["flags"].boolVal, true)
-
-    block:
-      assertEq(table["output"].kind, TomlValueKind.Table)
-      let outputTable = table["output"].tableVal
-      assertEq(outputTable.len(), 2)
-      assertEq(outputTable["int_value"].kind, TomlValueKind.Int)
-      assertEq(outputTable["int_value"].intVal, 6)
-      assertEq(outputTable["str_value"].kind, TomlValueKind.String)
-      assertEq(outputTable["str_value"].stringVal, "This is a test")
-
-    block:
-      assertEq(table["deeply"].kind, TomlValueKind.Table)
-      let deeplyTable = table["deeply"].tableVal
-      assertEq(deeplyTable["nested"].kind, TomlValueKind.Table)
-      let nestedTable = deeplyTable["nested"].tableVal
-      assertEq(nestedTable.len(), 1)
-      assertEq(nestedTable["hello_there"].kind, TomlValueKind.Float)
-      assertEq(nestedTable["hello_there"].floatVal, 100.0)
-
-  except TomlError:
-    let loc = (ref TomlError)(getCurrentException()).location
-    echo loc.filename & ":" & $(loc.line) & ":" & $(loc.column) & ":" &
-      getCurrentExceptionMsg()
-
-  let fruitTable = parseString("""
-[[fruit]]
-name = "apple"
-
-[fruit.physical]
-  color = "red"
-  shape = "round"
-
-[[fruit.variety]]
-  name = "red delicious"
-
-[[fruit.variety]]
-  name = "granny smith"
-
-[[fruit]]
-name = "banana"
-
-[[fruit.variety]]
-  name = "plantain"
-""")
-
-  assertEq(fruitTable.len(), 1)
-  assertEq(fruitTable["fruit"].kind, TomlValueKind.Array)
-  assertEq(fruitTable["fruit"].arrayVal[0].kind, TomlValueKind.Table)
-  assertEq(fruitTable["fruit"].arrayVal[0].tableVal.len(), 3)
-  assertEq(fruitTable["fruit"].arrayVal[0].tableVal["name"].kind,
-           TomlValueKind.String)
-  assertEq(fruitTable["fruit"].arrayVal[0].tableVal["name"].stringVal, "apple")
-  assertEq(fruitTable["fruit"].arrayVal[0].tableVal["physical"].kind,
-           TomlValueKind.Table)
-  assertEq(fruitTable["fruit"].arrayVal[0].tableVal["variety"].kind,
-           TomlValueKind.Array)
-
-  block:
-    let varietyTable =
-      fruitTable["fruit"].arrayVal[0].tableVal["variety"].arrayVal
-    assertEq(varietyTable.len(), 2)
-    assertEq(varietyTable[0].kind, TomlValueKind.Table)
-    assertEq(varietyTable[0].tableVal["name"].kind, TomlValueKind.String)
-    assertEq(varietyTable[0].tableVal["name"].stringVal, "red delicious")
-    assertEq(varietyTable[1].kind, TomlValueKind.Table)
-    assertEq(varietyTable[1].tableVal["name"].kind, TomlValueKind.String)
-    assertEq(varietyTable[1].tableVal["name"].stringVal, "granny smith")
-
-  assertEq(fruitTable["fruit"].arrayVal[1].kind, TomlValueKind.Table)
-  assertEq(fruitTable["fruit"].arrayVal[1].tableVal.len(), 2)
-
-  assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].kind,
-           TomlValueKind.String)
-  assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].stringVal, "banana")
-  assertEq(fruitTable["fruit"].arrayVal[1].tableVal["variety"].kind,
-           TomlValueKind.Array)
-
-  block:
-    let varietyTable =
-      fruitTable["fruit"].arrayVal[1].tableVal["variety"].arrayVal
-    assertEq(varietyTable.len(), 1)
-    assertEq(varietyTable[0].kind, TomlValueKind.Table)
-    assertEq(varietyTable[0].tableVal["name"].kind, TomlValueKind.String)
-    assertEq(varietyTable[0].tableVal["name"].stringVal, "plantain")
-
-
-  # getValueFromFullAddr
-
-  block:
-    let node = getValueFromFullAddr(fruitTable, "fruit[1].variety[0].name")
-    assertEq(node.kind, TomlValueKind.String)
-    assertEq(node.stringVal, "plantain")
-
-  block:
-    # Wrong index
-    let node = getValueFromFullAddr(fruitTable, "fruit[3]")
-    assertEq(node.kind, TomlValueKind.None)
-
-  block:
-    # Dangling dot
-    let node = getValueFromFullAddr(fruitTable, "fruit[0].")
-    assertEq(node.kind, TomlValueKind.None)
-
-  # getString
-
-  assertEq(fruitTable.getString("fruit[0].name"), "apple")
-  assertEq(fruitTable.getString("fruit[0].physical.shape"), "round")
-
-  try:
-    assertEq(fruitTable.getString("fruit[0].this_does_not_exist"), "")
-    assert false, "We should have never reached this line!"
-  except:
-    discard
-
-  assertEq(fruitTable.getString("fruit[0].color", "yellow"), "yellow")
-
-  # get??Array
-
-  let arrayTable = parseString("""
-empty = []
-intArr = [1, 2, 3, 4, 5]
-floatArr = [10.0, 11.0, 12.0, 13.0]
-boolArr = [false, true]
-stringArr = ["foo", "bar", "baz"]
-dateTimeArr = [1978-02-07T01:02:03Z]
-""")
-
-  template checkGetArrayFunc(keyName: string,
-                             funcName: untyped,
-                             reference: untyped) =
-    let arr = arrayTable.funcName(keyName)
-
-    assertEq(len(arr), len(reference))
-    for idx in countup(low(arr), high(arr)):
-      assertEq(arr[idx], reference[idx])
-
-  assertEq(len(getIntArray(arrayTable, "empty")), 0)
-  assertEq(len(getFloatArray(arrayTable, "empty")), 0)
-  assertEq(len(getBoolArray(arrayTable, "empty")), 0)
-  assertEq(len(getStringArray(arrayTable, "empty")), 0)
-  assertEq(len(getDateTimeArray(arrayTable, "empty")), 0)
-
-  checkGetArrayFunc("intArr", getIntArray, [1, 2, 3, 4, 5])
-  checkGetArrayFunc("floatArr", getFloatArray, [10.0, 11.0, 12.0, 13.0])
-  checkGetArrayFunc("boolArr", getBoolArray, [false, true])
-  checkGetArrayFunc("stringArr", getStringArray, ["foo", "bar", "baz"])
-
-  block:
-    let referenceDate = TomlDateTime(year: 1978, month: 2, day: 7,
-                                     hour: 1, minute: 2, second: 3,
-                                     shift: false)
-
-    let arr = arrayTable.getDateTimeArray("dateTimeArr")
-    assertEq(len(arr), 1)
-    assertEq(arr[0].year, referenceDate.year)
-    assertEq(arr[0].month, referenceDate.month)
-    assertEq(arr[0].day, referenceDate.day)
-    assertEq(arr[0].hour, referenceDate.hour)
-    assertEq(arr[0].minute, referenceDate.minute)
-    assertEq(arr[0].second, referenceDate.second)
-    assertEq(arr[0].shift, referenceDate.shift)
