@@ -1085,7 +1085,7 @@ template defineGetProc(name: untyped,
                        kindVal: TomlValueKind,
                        field: untyped,
                        t: typeDesc,
-                       doccomment: untyped) =
+                       doccomment: untyped) {.dirty.} =
   proc name*(table: TomlTableRef,
              address: string): t =
     doccomment
@@ -1101,7 +1101,7 @@ template defineGetProc(name: untyped,
 
 template defineGetProcDefault(name: untyped,
                               t: typeDesc,
-                              doccomment: untyped) =
+                              doccomment: untyped) {.dirty.} =
   proc name*(table: TomlTableRef,
              address: string,
              default: t): t =
@@ -1166,7 +1166,7 @@ template defineGetArray(name: untyped,
                         kindVal: TomlValueKind,
                         field: untyped,
                         t: typeDesc,
-                        doccomment: untyped) =
+                        doccomment: untyped) {.dirty.} =
   proc name*(table: TomlTableRef,
              address: string): seq[t] =
     doccomment
