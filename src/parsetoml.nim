@@ -28,6 +28,7 @@ import streams
 import strutils
 import tables
 import unicode
+export tables
 
 type
   TomlValueKind* {.pure.} = enum
@@ -1103,6 +1104,41 @@ template defineGetProc(name: untyped,
       raise(newException(ValueError, "key \"" & address &
                                    "\" has the wrong type"))
 
+template defineSetProc(name: untyped,
+                       kindVal: TomlValueKind,
+                       field: untyped,
+                       t: typeDesc,
+                       doccomment: untyped) {.dirty.} =
+  proc name*(table: TomlTableRef,
+             address: string,
+             newVal: t) =
+    doccomment
+    var node = table.getValueFromFullAddr(address)
+    if node.kind == TomlValueKind.None:
+      raise(newException(KeyError, "key \"" & address & "\" not found"))
+
+    if node.kind == kindVal:
+      node.field = newVal
+    else:
+      raise(newException(ValueError, "key \"" & address &
+                                   "\" has the wrong type"))
+
+template defineAddProc(name: untyped,
+                       kindVal: TomlValueKind,
+                       field: untyped,
+                       t: typeDesc,
+                       doccomment: untyped) {.dirty.} =
+  proc name*(table: var TomlTableRef,
+             key: string,
+             value: t) =
+    doccomment
+    var node = table.getValueFromFullAddr(key)
+    if node.kind == TomlValueKind.None:
+      (table[])[key] = TomlValueRef(kind: kindVal, field: value)
+    else:
+      raise(newException(ValueError, "key \"" & key &
+                                   "\" already exists"))
+
 template defineGetProcDefault(name: untyped,
                               t: typeDesc,
                               doccomment: untyped) {.dirty.} =
@@ -1147,7 +1183,63 @@ defineGetProc(getTable, TomlValueKind.Table, tableVal, TomlTableRef) do:
   ## value found at the address a KeyError is thrown, if it is found, but it has
   ## the wrong type, a ValueError is thrown.
 
-
+defineAddProc(addInt, TomlValueKind.Int, intVal, int64) do:
+  ## Adds an integer to the table at the given key. The key must not exist and
+  ## will throw a ValueError if it does. The key is a single-level key only, if
+  ## it contains a dot it makes a complex key.
+defineSetProc(setInt, TomlValueKind.Int, intVal, int64) do:
+  ## Sets an integer value in the table. This accepts a full path like
+  ## ``getInt``. If the value doesn't already exist it throws a KeyError, and if
+  ## it isn't of the same type it throws a ValueError.
+defineAddProc(addFloat, TomlValueKind.Float, floatVal, float64) do:
+  ## Adds a float to the table at the given key. The key must not exist and
+  ## will throw a ValueError if it does. The key is a single-level key only, if
+  ## it contains a dot it makes a complex key.
+defineSetProc(setFloat, TomlValueKind.Float, floatVal, float64) do:
+  ## Sets a float value in the table. This accepts a full path like
+  ## ``getFloat``. If the value doesn't already exist it throws a KeyError, and
+  ## if it isn't of the same type it throws a ValueError.
+defineAddProc(addBool, TomlValueKind.Bool, boolVal, bool) do:
+  ## Adds a bool to the table at the given key. The key must not exist and
+  ## will throw a ValueError if it does. The key is a single-level key only, if
+  ## it contains a dot it makes a complex key.
+defineSetProc(setBool, TomlValueKind.Bool, stringVal, string) do:
+  ## Sets a string value in the table. This accepts a full path like
+  ## ``getBool``. If the value doesn't already exist it throws a KeyError, and
+  ## if it isn't of the same type it throws a ValueError.
+defineAddProc(addString, TomlValueKind.String, stringVal, string) do:
+  ## Adds a string to the table at the given key. The key must not exist and
+  ## will throw a ValueError if it does. The key is a single-level key only, if
+  ## it contains a dot it makes a complex key.
+defineSetProc(setString, TomlValueKind.String, stringVal, string) do:
+  ## Sets a string value in the table. This accepts a full path like
+  ## ``getString``. If the value doesn't already exist it throws a KeyError, and
+  ## if it isn't of the same type it throws a ValueError.
+defineAddProc(addDateTime, TomlValueKind.DateTime, dateTimeVal,
+  TomlDateTime) do:
+  ## Adds a TomlDateTime to the table at the given key. The key must not exist
+  ## and will throw a ValueError if it does. The key is a single-level key only,
+  ## if it contains a dot it makes a complex key.
+defineSetProc(setDateTime, TomlValueKind.DateTime, dateTimeVal,
+  TomlDateTime) do:
+  ## Sets a dateTime value in the table. This accepts a full path like
+  ## ``getDateTime``. If the value doesn't already exist it throws a KeyError,
+  ## and if it isn't of the same type it throws a ValueError.
+proc addTable*(table: var TomlTableRef, key: string): TomlTableRef =
+  ## Adds a new empty sub-table to the table at the given key. The key must not
+  ## exist and will throw a ValueError if it does. The key is a single-level key
+  ## only, if it contains a dot it makes a complex key. This returns the newly
+  ## added sub-table so you can add new entries to it.
+  var node = table.getValueFromFullAddr(key)
+  if node.kind == TomlValueKind.None:
+    var newTable: TomlValueRef
+    new(newTable)
+    setEmptyTableVal(newTable)
+    (table[])[key] = newTable
+    return newTable.tableVal
+  else:
+    raise(newException(ValueError, "key \"" & key &
+                                 "\" already exists"))
 
 defineGetProcDefault(getInt, int64) do:
   ## Similar to `getInt` but will return the default value if no value with
@@ -1197,37 +1289,77 @@ template defineGetArray(name: untyped,
       raise(newException(ValueError, "key \"" & address &
                                    "\" is not an array"))
 
+  iterator name*(table: TomlTableRef,
+             address: string): var t =
+    doccomment
+    let node = table.getValueFromFullAddr(address)
+    case node.kind
+    of TomlValueKind.None:
+      raise(newException(KeyError, "key \"" & address & "\" not found"))
+    of TomlValueKind.Array:
+      let arr = node.arrayVal
+      if arr[0].kind != kindVal:
+        raise(newException(ValueError, "the array elements of \"" &
+                                     address &
+                                     "\" have the wrong type (" &
+                                     $kindVal & ")"))
+
+      for idx, elem in arr:
+        yield elem.field
+    else:
+      raise(newException(ValueError, "key \"" & address &
+                                   "\" is not an array"))
+
 defineGetArray(getIntArray, TomlValueKind.Int, intVal, int64) do:
   ## Get an array of integer values from the table indicated by the address
   ## string. This works like ``getValueFromFullAddr`` but does extra validation.
   ## If there is no value found at the address a KeyError is thrown, if it is
   ## found, but it is not an array or the values in the array have the wrong
-  ## type, a ValueError is thrown.
+  ## type, a ValueError is thrown. Note that when not used as an iterator this
+  ## unpacks the values from the internal representation and creates a new
+  ## sequence. When using as an iterator it will simply yield each entry.
 defineGetArray(getFloatArray, TomlValueKind.Float, floatVal, float64) do:
   ## Get an array of float values from the table indicated by the address
   ## string. This works like ``getValueFromFullAddr`` but does extra validation.
   ## If there is no value found at the address a KeyError is thrown, if it is
   ## found, but it is not an array or the values in the array have the wrong
-  ## type, a ValueError is thrown.
+  ## type, a ValueError is thrown. Note that when not used as an iterator this
+  ## unpacks the values from the internal representation and creates a new
+  ## sequence. When using as an iterator it will simply yield each entry.
 defineGetArray(getBoolArray, TomlValueKind.Bool, boolVal, bool) do:
   ## Get an array of boolean values from the table indicated by the address
   ## string. This works like ``getValueFromFullAddr`` but does extra validation.
   ## If there is no value found at the address a KeyError is thrown, if it is
   ## found, but it is not an array or the values in the array have the wrong
-  ## type, a ValueError is thrown.
+  ## type, a ValueError is thrown. Note that when not used as an iterator this
+  ## unpacks the values from the internal representation and creates a new
+  ## sequence. When using as an iterator it will simply yield each entry.
 defineGetArray(getStringArray, TomlValueKind.String, stringVal, string) do:
   ## Get an array of string values from the table indicated by the address
   ## string. This works like ``getValueFromFullAddr`` but does extra validation.
   ## If there is no value found at the address a KeyError is thrown, if it is
   ## found, but it is not an array or the values in the array have the wrong
-  ## type, a ValueError is thrown.
+  ## type, a ValueError is thrown. Note that when not used as an iterator this
+  ## unpacks the values from the internal representation and creates a new
+  ## sequence. When using as an iterator it will simply yield each entry.
 defineGetArray(getDateTimeArray, TomlValueKind.DateTime,
                dateTimeVal, TomlDateTime) do:
   ## Get an array of DateTime objects from the table indicated by the address
   ## string. This works like ``getValueFromFullAddr`` but does extra validation.
   ## If there is no value found at the address a KeyError is thrown, if it is
   ## found, but it is not an array or the values in the array have the wrong
-  ## type, a ValueError is thrown.
+  ## type, a ValueError is thrown. Note that when not used as an iterator this
+  ## unpacks the values from the internal representation and creates a new
+  ## sequence. When using as an iterator it will simply yield each entry.
+defineGetArray(getTableArray, TomlValueKind.Table,
+               tableVal, TomlTableRef) do:
+  ## Get an array of sub-tables from the table indicated by the address string.
+  ## This works like ``getValueFromFullAddr`` but does extra validation. If
+  ## there is no value found at the address a KeyError is thrown, if it is
+  ## found, but it is not an array or the values in the array have the wrong
+  ## type, a ValueError is thrown. Note that when not used as an iterator this
+  ## unpacks the values from the internal representation and creates a new
+  ## sequence. When using as an iterator it will simply yield each entry.
 
 import json, sequtils
 
