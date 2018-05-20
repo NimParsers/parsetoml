@@ -1084,9 +1084,11 @@ proc getValueFromFullAddr*(table: TomlTableRef,
 template defineGetProc(name: untyped,
                        kindVal: TomlValueKind,
                        field: untyped,
-                       t: typeDesc) =
+                       t: typeDesc,
+                       doccomment: untyped) =
   proc name*(table: TomlTableRef,
              address: string): t =
+    doccomment
     let node = table.getValueFromFullAddr(address)
     if node.kind == TomlValueKind.None:
       raise(newException(KeyError, "key \"" & address & "\" not found"))
@@ -1094,37 +1096,80 @@ template defineGetProc(name: untyped,
     if node.kind == kindVal:
       result = node.field
     else:
-      raise(newException(KeyError, "key \"" & address &
+      raise(newException(ValueError, "key \"" & address &
                                    "\" has the wrong type"))
 
 template defineGetProcDefault(name: untyped,
-                              t: typeDesc) =
+                              t: typeDesc,
+                              doccomment: untyped) =
   proc name*(table: TomlTableRef,
              address: string,
              default: t): t =
+    doccomment
     try:
       result = name(table, address)
     except KeyError:
       result = default
 
-defineGetProc(getInt, TomlValueKind.Int, intVal, int64)
-defineGetProc(getFloat, TomlValueKind.Float, floatVal, float64)
-defineGetProc(getBool, TomlValueKind.Bool, boolVal, bool)
-defineGetProc(getString, TomlValueKind.String, stringVal, string)
-defineGetProc(getDateTime, TomlValueKind.DateTime, dateTimeVal, TomlDateTime)
-defineGetProc(getTable, TomlValueKind.Table, tableVal, TomlTableRef)
+defineGetProc(getInt, TomlValueKind.Int, intVal, int64) do:
+  ## Get an integer from the table indicated by the address string. This works
+  ## like ``getValueFromFullAddr`` but does extra validation. If there is no
+  ## value found at the address a KeyError is thrown, if it is found, but it has
+  ## the wrong type, a ValueError is thrown.
+defineGetProc(getFloat, TomlValueKind.Float, floatVal, float64) do:
+  ## Get a float from the table indicated by the address string. This works
+  ## like ``getValueFromFullAddr`` but does extra validation. If there is no
+  ## value found at the address a KeyError is thrown, if it is found, but it has
+  ## the wrong type, a ValueError is thrown.
+defineGetProc(getBool, TomlValueKind.Bool, boolVal, bool) do:
+  ## Get a boolean from the table indicated by the address string. This works
+  ## like ``getValueFromFullAddr`` but does extra validation. If there is no
+  ## value found at the address a KeyError is thrown, if it is found, but it has
+  ## the wrong type, a ValueError is thrown.
+defineGetProc(getString, TomlValueKind.String, stringVal, string) do:
+  ## Get a string from the table indicated by the address string. This works
+  ## like ``getValueFromFullAddr`` but does extra validation. If there is no
+  ## value found at the address a KeyError is thrown, if it is found, but it has
+  ## the wrong type, a ValueError is thrown.
+defineGetProc(getDateTime, TomlValueKind.DateTime, dateTimeVal,
+  TomlDateTime) do:
+  ## Get a TomlDateTime object from the table indicated by the address string.
+  ## This works like ``getValueFromFullAddr`` but does extra validation. If
+  ## there is no value found at the address a KeyError is thrown, if it is
+  ## found, but it has the wrong type, a ValueError is thrown.
+defineGetProc(getTable, TomlValueKind.Table, tableVal, TomlTableRef) do:
+  ## Get a sub-table from the table indicated by the address string. This works
+  ## like ``getValueFromFullAddr`` but does extra validation. If there is no
+  ## value found at the address a KeyError is thrown, if it is found, but it has
+  ## the wrong type, a ValueError is thrown.
 
-defineGetProcDefault(getInt, int64)
-defineGetProcDefault(getFloat, float64)
-defineGetProcDefault(getBool, bool)
-defineGetProcDefault(getString, string)
+
+
+defineGetProcDefault(getInt, int64) do:
+  ## Similar to `getInt` but will return the default value if no value with
+  ## that name was found. This will still throw ValueErrors if the value found
+  ## at the address has the wrong type.
+defineGetProcDefault(getFloat, float64) do:
+  ## Similar to `getFloat` but will return the default value if no value with
+  ## that name was found. This will still throw ValueErrors if the value found
+  ## at the address has the wrong type.
+defineGetProcDefault(getBool, bool) do:
+  ## Similar to `getBool` but will return the default value if no value with
+  ## that name was found. This will still throw ValueErrors if the value found
+  ## at the address has the wrong type.
+defineGetProcDefault(getString, string) do:
+  ## Similar to `getString` but will return the default value if no value with
+  ## that name was found. This will still throw ValueErrors if the value found
+  ## at the address has the wrong type.
 
 template defineGetArray(name: untyped,
                         kindVal: TomlValueKind,
                         field: untyped,
-                        t: typeDesc) =
+                        t: typeDesc,
+                        doccomment: untyped) =
   proc name*(table: TomlTableRef,
              address: string): seq[t] =
+    doccomment
     let node = table.getValueFromFullAddr(address)
     case node.kind
     of TomlValueKind.None:
@@ -1136,7 +1181,7 @@ template defineGetArray(name: untyped,
         return
 
       if arr[0].kind != kindVal:
-        raise(newException(KeyError, "the array elements of \"" &
+        raise(newException(ValueError, "the array elements of \"" &
                                      address &
                                      "\" have the wrong type (" &
                                      $kindVal & ")"))
@@ -1145,15 +1190,40 @@ template defineGetArray(name: untyped,
       for idx, elem in arr:
         result[idx] = elem.field
     else:
-      raise(newException(KeyError, "key \"" & address &
+      raise(newException(ValueError, "key \"" & address &
                                    "\" is not an array"))
 
-defineGetArray(getIntArray, TomlValueKind.Int, intVal, int64)
-defineGetArray(getFloatArray, TomlValueKind.Float, floatVal, float64)
-defineGetArray(getBoolArray, TomlValueKind.Bool, boolVal, bool)
-defineGetArray(getStringArray, TomlValueKind.String, stringVal, string)
+defineGetArray(getIntArray, TomlValueKind.Int, intVal, int64) do:
+  ## Get an array of integer values from the table indicated by the address
+  ## string. This works like ``getValueFromFullAddr`` but does extra validation.
+  ## If there is no value found at the address a KeyError is thrown, if it is
+  ## found, but it is not an array or the values in the array have the wrong
+  ## type, a ValueError is thrown.
+defineGetArray(getFloatArray, TomlValueKind.Float, floatVal, float64) do:
+  ## Get an array of float values from the table indicated by the address
+  ## string. This works like ``getValueFromFullAddr`` but does extra validation.
+  ## If there is no value found at the address a KeyError is thrown, if it is
+  ## found, but it is not an array or the values in the array have the wrong
+  ## type, a ValueError is thrown.
+defineGetArray(getBoolArray, TomlValueKind.Bool, boolVal, bool) do:
+  ## Get an array of boolean values from the table indicated by the address
+  ## string. This works like ``getValueFromFullAddr`` but does extra validation.
+  ## If there is no value found at the address a KeyError is thrown, if it is
+  ## found, but it is not an array or the values in the array have the wrong
+  ## type, a ValueError is thrown.
+defineGetArray(getStringArray, TomlValueKind.String, stringVal, string) do:
+  ## Get an array of string values from the table indicated by the address
+  ## string. This works like ``getValueFromFullAddr`` but does extra validation.
+  ## If there is no value found at the address a KeyError is thrown, if it is
+  ## found, but it is not an array or the values in the array have the wrong
+  ## type, a ValueError is thrown.
 defineGetArray(getDateTimeArray, TomlValueKind.DateTime,
-               dateTimeVal, TomlDateTime)
+               dateTimeVal, TomlDateTime) do:
+  ## Get an array of DateTime objects from the table indicated by the address
+  ## string. This works like ``getValueFromFullAddr`` but does extra validation.
+  ## If there is no value found at the address a KeyError is thrown, if it is
+  ## found, but it is not an array or the values in the array have the wrong
+  ## type, a ValueError is thrown.
 
 import json, sequtils
 
