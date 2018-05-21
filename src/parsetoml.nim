@@ -48,6 +48,7 @@ type
     hour*: int
     minute*: int
     second*: int
+    subsecond*: int
     case shift: bool
     of true:
       isShiftPositive: bool
@@ -197,8 +198,12 @@ proc parseInt(state: var ParserState,
 
     if nextChar == '0' and firstPos and leadingChar == LeadingChar.DenyZero:
       # TOML specifications forbid this
-      raise(newTomlError(state,
-                         "leading zeroes are not allowed in integers"))
+      var upcomingChar = state.getNextChar()
+      if upcomingChar in Digits:
+        raise(newTomlError(state,
+                           "leading zeroes are not allowed in integers"))
+      else:
+        state.pushBackChar(upcomingChar)
 
     if nextChar notin digits:
       if wasUnderscore:
@@ -352,7 +357,7 @@ proc parseMultiLineString(state: var ParserState, kind: StringType): string =
         continue
       else:
         # This is just an escape sequence (like "\t")
-        nextChar = state.getNextChar()
+        #nextChar = state.getNextChar()
         result.add(state.parseEscapeChar(nextChar))
         continue
 
@@ -511,6 +516,12 @@ proc parseDateTimePart(state: var ParserState,
     raise(newTomlError(state, "seconds is not exactly two digits"))
 
   nextChar = state.getNextChar()
+  if nextChar == '.':
+    dateTime.subsecond = parseInt(state, base10, LeadingChar.AllowZero).int
+  else:
+    state.pushBackChar(nextChar)
+
+  nextChar = state.getNextChar()
   case nextChar
   of 'z', 'Z':
     dateTime.shift = false
@@ -557,7 +568,9 @@ proc parseValue(state: var ParserState): TomlValueRef =
   nextChar = state.getNextNonWhitespace(skipNoLf)
   case nextChar
   of strutils.Digits, '+', '-':
-    let surelyNotDateTime = nextChar in {'+', '-'}
+    let
+      surelyNotDateTime = nextChar in {'+', '-'}
+      negative = nextChar == '-'
     state.pushBackChar(nextChar)
 
     # We can either have an integer, a float or a datetime
@@ -568,7 +581,7 @@ proc parseValue(state: var ParserState): TomlValueRef =
       let exponent = parseInt(state, base10, LeadingChar.AllowZero)
       let value = pow10(float64(intPart), exponent)
       result = TomlValueRef(kind: TomlValueKind.Float,
-                            floatVal: value)
+                            floatVal: (if negative and value >= 0: -value else: value))
     of '.':
       nextChar = state.getNextChar()
       if nextChar notin strutils.Digits:
@@ -588,7 +601,7 @@ proc parseValue(state: var ParserState): TomlValueRef =
         else:
           pow10(float64(intPart) + decimalPart, exponent)
       result = TomlValueRef(kind: TomlValueKind.Float,
-                            floatVal: value)
+                            floatVal: (if negative and value >= 0: -value else: value))
     of '-':
       if surelyNotDateTime:
         raise(newTomlError(state, "unexpected character \"-\""))
@@ -607,7 +620,7 @@ proc parseValue(state: var ParserState): TomlValueRef =
     else:
       state.pushBackChar(nextChar)
       result = TomlValueRef(kind: TomlValueKind.Int,
-                            intVal: intPart)
+                            intVal: (if negative and intPart >= 0: -intPart else: intPart))
 
   of 't':
     # Is this "true"?
@@ -993,6 +1006,7 @@ proc `$`*(val: TomlDateTime): string =
   result = ($val.year).align(4, '0') & "-" & ($val.month).align(2, '0') & "-" &
     ($val.day).align(2, '0') & "T" & ($val.hour).align(2, '0') & ":" &
     ($val.minute).align(2, '0') & ":" & ($val.second).align(2, '0') &
+    (if val.subsecond > 0: ("." & $val.subsecond) else: "") &
     (if not val.shift: "Z" else: (
       (if val.isShiftPositive: "+" else: "-") &
         ($val.zonehourshift).align(2, '0') & ":" &

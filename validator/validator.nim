@@ -1,4 +1,4 @@
-import parsetoml
+import "../src/parsetoml"
 import json
 import streams
 import os
