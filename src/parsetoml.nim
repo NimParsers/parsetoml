@@ -1448,6 +1448,7 @@ proc `==`* (a, b: TomlValueRef): bool =
         a.dateTimeVal.hour == b.dateTimeVal.hour and
         a.dateTimeVal.minute == b.dateTimeVal.minute and
         a.dateTimeVal.second == b.dateTimeVal.second and
+        a.dateTimeVal.subsecond == b.dateTimeVal.subsecond and
         a.dateTimeVal.shift == b.dateTimeVal.shift and
         (a.dateTimeVal.shift == true and
           (a.dateTimeVal.isShiftPositive == b.dateTimeVal.isShiftPositive and
