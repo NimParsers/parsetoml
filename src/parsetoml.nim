@@ -1156,27 +1156,32 @@ defineGetProc(getInt, TomlValueKind.Int, intVal, int64) do:
   ## like ``getValueFromFullAddr`` but does extra validation. If there is no
   ## value found at the address a KeyError is thrown, if it is found, but it has
   ## the wrong type, a ValueError is thrown.
+
 defineGetProc(getFloat, TomlValueKind.Float, floatVal, float64) do:
   ## Get a float from the table indicated by the address string. This works
   ## like ``getValueFromFullAddr`` but does extra validation. If there is no
   ## value found at the address a KeyError is thrown, if it is found, but it has
   ## the wrong type, a ValueError is thrown.
+
 defineGetProc(getBool, TomlValueKind.Bool, boolVal, bool) do:
   ## Get a boolean from the table indicated by the address string. This works
   ## like ``getValueFromFullAddr`` but does extra validation. If there is no
   ## value found at the address a KeyError is thrown, if it is found, but it has
   ## the wrong type, a ValueError is thrown.
+
 defineGetProc(getString, TomlValueKind.String, stringVal, string) do:
   ## Get a string from the table indicated by the address string. This works
   ## like ``getValueFromFullAddr`` but does extra validation. If there is no
   ## value found at the address a KeyError is thrown, if it is found, but it has
   ## the wrong type, a ValueError is thrown.
+
 defineGetProc(getDateTime, TomlValueKind.DateTime, dateTimeVal,
   TomlDateTime) do:
   ## Get a TomlDateTime object from the table indicated by the address string.
   ## This works like ``getValueFromFullAddr`` but does extra validation. If
   ## there is no value found at the address a KeyError is thrown, if it is
   ## found, but it has the wrong type, a ValueError is thrown.
+
 defineGetProc(getTable, TomlValueKind.Table, tableVal, TomlTableRef) do:
   ## Get a sub-table from the table indicated by the address string. This works
   ## like ``getValueFromFullAddr`` but does extra validation. If there is no
@@ -1187,44 +1192,54 @@ defineAddProc(addInt, TomlValueKind.Int, intVal, int64) do:
   ## Adds an integer to the table at the given key. The key must not exist and
   ## will throw a ValueError if it does. The key is a single-level key only, if
   ## it contains a dot it makes a complex key.
+
 defineSetProc(setInt, TomlValueKind.Int, intVal, int64) do:
   ## Sets an integer value in the table. This accepts a full path like
   ## ``getInt``. If the value doesn't already exist it throws a KeyError, and if
   ## it isn't of the same type it throws a ValueError.
+
 defineAddProc(addFloat, TomlValueKind.Float, floatVal, float64) do:
   ## Adds a float to the table at the given key. The key must not exist and
   ## will throw a ValueError if it does. The key is a single-level key only, if
   ## it contains a dot it makes a complex key.
+
 defineSetProc(setFloat, TomlValueKind.Float, floatVal, float64) do:
   ## Sets a float value in the table. This accepts a full path like
   ## ``getFloat``. If the value doesn't already exist it throws a KeyError, and
   ## if it isn't of the same type it throws a ValueError.
+
 defineAddProc(addBool, TomlValueKind.Bool, boolVal, bool) do:
   ## Adds a bool to the table at the given key. The key must not exist and
   ## will throw a ValueError if it does. The key is a single-level key only, if
   ## it contains a dot it makes a complex key.
+
 defineSetProc(setBool, TomlValueKind.Bool, stringVal, string) do:
   ## Sets a string value in the table. This accepts a full path like
   ## ``getBool``. If the value doesn't already exist it throws a KeyError, and
   ## if it isn't of the same type it throws a ValueError.
+
 defineAddProc(addString, TomlValueKind.String, stringVal, string) do:
   ## Adds a string to the table at the given key. The key must not exist and
   ## will throw a ValueError if it does. The key is a single-level key only, if
   ## it contains a dot it makes a complex key.
+
 defineSetProc(setString, TomlValueKind.String, stringVal, string) do:
   ## Sets a string value in the table. This accepts a full path like
   ## ``getString``. If the value doesn't already exist it throws a KeyError, and
   ## if it isn't of the same type it throws a ValueError.
+
 defineAddProc(addDateTime, TomlValueKind.DateTime, dateTimeVal,
   TomlDateTime) do:
   ## Adds a TomlDateTime to the table at the given key. The key must not exist
   ## and will throw a ValueError if it does. The key is a single-level key only,
   ## if it contains a dot it makes a complex key.
+
 defineSetProc(setDateTime, TomlValueKind.DateTime, dateTimeVal,
   TomlDateTime) do:
   ## Sets a dateTime value in the table. This accepts a full path like
   ## ``getDateTime``. If the value doesn't already exist it throws a KeyError,
   ## and if it isn't of the same type it throws a ValueError.
+
 proc addTable*(table: var TomlTableRef, key: string): TomlTableRef =
   ## Adds a new empty sub-table to the table at the given key. The key must not
   ## exist and will throw a ValueError if it does. The key is a single-level key
@@ -1245,14 +1260,17 @@ defineGetProcDefault(getInt, int64) do:
   ## Similar to `getInt` but will return the default value if no value with
   ## that name was found. This will still throw ValueErrors if the value found
   ## at the address has the wrong type.
+
 defineGetProcDefault(getFloat, float64) do:
   ## Similar to `getFloat` but will return the default value if no value with
   ## that name was found. This will still throw ValueErrors if the value found
   ## at the address has the wrong type.
+
 defineGetProcDefault(getBool, bool) do:
   ## Similar to `getBool` but will return the default value if no value with
   ## that name was found. This will still throw ValueErrors if the value found
   ## at the address has the wrong type.
+
 defineGetProcDefault(getString, string) do:
   ## Similar to `getString` but will return the default value if no value with
   ## that name was found. This will still throw ValueErrors if the value found
@@ -1318,6 +1336,7 @@ defineGetArray(getIntArray, TomlValueKind.Int, intVal, int64) do:
   ## type, a ValueError is thrown. Note that when not used as an iterator this
   ## unpacks the values from the internal representation and creates a new
   ## sequence. When using as an iterator it will simply yield each entry.
+
 defineGetArray(getFloatArray, TomlValueKind.Float, floatVal, float64) do:
   ## Get an array of float values from the table indicated by the address
   ## string. This works like ``getValueFromFullAddr`` but does extra validation.
@@ -1326,6 +1345,7 @@ defineGetArray(getFloatArray, TomlValueKind.Float, floatVal, float64) do:
   ## type, a ValueError is thrown. Note that when not used as an iterator this
   ## unpacks the values from the internal representation and creates a new
   ## sequence. When using as an iterator it will simply yield each entry.
+
 defineGetArray(getBoolArray, TomlValueKind.Bool, boolVal, bool) do:
   ## Get an array of boolean values from the table indicated by the address
   ## string. This works like ``getValueFromFullAddr`` but does extra validation.
@@ -1334,6 +1354,7 @@ defineGetArray(getBoolArray, TomlValueKind.Bool, boolVal, bool) do:
   ## type, a ValueError is thrown. Note that when not used as an iterator this
   ## unpacks the values from the internal representation and creates a new
   ## sequence. When using as an iterator it will simply yield each entry.
+
 defineGetArray(getStringArray, TomlValueKind.String, stringVal, string) do:
   ## Get an array of string values from the table indicated by the address
   ## string. This works like ``getValueFromFullAddr`` but does extra validation.
@@ -1342,6 +1363,7 @@ defineGetArray(getStringArray, TomlValueKind.String, stringVal, string) do:
   ## type, a ValueError is thrown. Note that when not used as an iterator this
   ## unpacks the values from the internal representation and creates a new
   ## sequence. When using as an iterator it will simply yield each entry.
+
 defineGetArray(getDateTimeArray, TomlValueKind.DateTime,
                dateTimeVal, TomlDateTime) do:
   ## Get an array of DateTime objects from the table indicated by the address
@@ -1351,6 +1373,7 @@ defineGetArray(getDateTimeArray, TomlValueKind.DateTime,
   ## type, a ValueError is thrown. Note that when not used as an iterator this
   ## unpacks the values from the internal representation and creates a new
   ## sequence. When using as an iterator it will simply yield each entry.
+
 defineGetArray(getTableArray, TomlValueKind.Table,
                tableVal, TomlTableRef) do:
   ## Get an array of sub-tables from the table indicated by the address string.
