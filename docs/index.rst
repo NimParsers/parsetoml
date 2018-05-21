@@ -16,7 +16,7 @@ Parsetoml is a Nim library that parses text files written in TOML format.
 
 A good source of information is the source code itself, which can be
 found on the `GitHub website
-<https://github.com/ziotom78/parsetoml/blob/master/parsetoml.nim>`_.
+<https://github.com/NimParsers/parsetoml/blob/master/parsetoml.nim>`_.
 
 Indices and tables
 ==================

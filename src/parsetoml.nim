@@ -1,4 +1,4 @@
-# Copyright (c) 2015 Maurizio Tomasi
+# Copyright (c) 2015 Maurizio Tomasi and contributors
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -21,7 +21,7 @@
 # SOFTWARE.
 
 # parsetoml - Nim library to parse a TOML file
-# Main site: https://github.com/ziotom78/parsetoml
+# Main site: https://github.com/NimParsers/parsetoml
 
 import math
 import streams
