@@ -141,7 +141,7 @@ proc getNextNonWhitespace(state: var ParserState,
     nextChar = state.getNextChar()
     if nextChar == '#':
       # Skip the comment up to the newline, but do not jump over it
-      while nextChar != '\l':
+      while nextChar != '\l' and nextChar != '\0':
         nextChar = state.getNextChar()
 
     if nextChar notin whitespaces: break
