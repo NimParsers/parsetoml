@@ -545,8 +545,8 @@ proc parseDateTimePart(state: var ParserState,
       parseIntAndCheckBounds(state, 0, 59,
                              "invalid number of shift minutes")
   else:
-    raise(newTomlError(state, "unexpected character \"" & nextChar &
-                       "\" instead of the time zone"))
+    raise(newTomlError(state, "unexpected character " & escape($nextChar) &
+                       " instead of the time zone"))
 
 proc pow10(x: float64, pow: int64): float64 {.inline.} =
   if pow == 0:
@@ -658,7 +658,7 @@ proc parseValue(state: var ParserState): TomlValueRef =
 
   else:
     raise(newTomlError(state,
-                       "unexpected character \"" & nextChar & "\""))
+                       "unexpected character " & escape($nextChar)))
 
 proc parseName(state: var ParserState): string =
   # This parses the name of a key or a table
@@ -678,7 +678,7 @@ proc parseName(state: var ParserState): string =
       break
     elif (nextChar notin {'a'..'z', 'A'..'Z', '0'..'9', '_', '-'}):
       raise(newTomlError(state,
-                         "bare key has illegal character"))
+        "bare key has illegal character: " & escape($nextChar)))
     else:
       result.add(nextChar)
 
@@ -716,14 +716,14 @@ proc parseTableName(state: var ParserState,
       nextChar = state.getNextNonWhitespace(skipNoLf)
       if nextChar != '\l':
         raise(newTomlError(state,
-                           "unexpected character \"" & nextChar & "\""))
+                           "unexpected character " & escape($nextChar)))
 
       break
 
     of '.': continue
     else:
       raise(newTomlError(state,
-                         "unexpected character \"" & nextChar & "\""))
+                         "unexpected character " & escape($nextChar)))
 
 proc parseInlineTable(state: var ParserState, tableRef: var TomlTableRef) =
   while true:
@@ -773,7 +773,7 @@ proc parseKeyValuePair(state: var ParserState, tableRef: var TomlTableRef) =
     nextChar = state.getNextNonWhitespace(skipNoLf)
     if nextChar != '\l':
       raise(newTomlError(state,
-                         "unexpected character \"" & nextChar & "\""))
+                         "unexpected character " & escape($nextChar)))
 
     if (tableRef[]).hasKey(key):
       raise(newTomlError(state,
@@ -975,7 +975,7 @@ proc parseStream*(inputStream: streams.Stream,
       raise(newTomlError(state, "key name missing"))
     of '#', '.', ']':
       raise(newTomlError(state,
-                         "unexpected character \"" & nextChar & "\""))
+                         "unexpected character " & escape($nextChar)))
     of '\0': # EOF
       return
     else:
