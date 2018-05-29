@@ -771,7 +771,7 @@ proc parseKeyValuePair(state: var ParserState, tableRef: var TomlTableRef) =
 
     # We must check that there is nothing else in this line
     nextChar = state.getNextNonWhitespace(skipNoLf)
-    if nextChar != '\l':
+    if nextChar != '\l' and nextChar != '\0':
       raise(newTomlError(state,
                          "unexpected character " & escape($nextChar)))
 
@@ -1777,6 +1777,16 @@ de"""))
       discard # That's expected
 
   # Arrays of tables (they're tricky to implement!)
+
+  block: # issue #20
+    try:
+      let table = parseString("""
+[general]
+data = 1""") # Notice that there's no newline, with it everything works
+
+      assertEq(table.getTable("general").getInt("data"), 1)
+    except TomlError:
+      assert false # If we reach this, there's something wrong
 
   try:
     let table = parseString("""
