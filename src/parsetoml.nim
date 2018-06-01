@@ -1591,6 +1591,287 @@ proc copy*(p: TomlValueRef): TomlValueRef =
   of TomlValueKind.DateTime:
     deepCopy(result, p)
 
+when defined(isMainModule):
+  template assertEq(T1: untyped, T2: untyped) =
+    bind instantiationInfo
+    mixin failedAssertImpl
+    when compileOption("assertions"):
+      {.line.}:
+        let val1 = T1
+        let val2 = T2
+        if not (val1 == val2):
+          failedAssertImpl(astToStr(T1) & " != " & astToStr(T2) &
+                           " (" &
+                           $(val1) & " != " & $(val2) & ')')
+
+  # Here come a few tests
+
+  # pow10
+  assert pow10(5.0, 1) == 50.0
+  assert pow10(5.0, 2) == 500.0
+  assert pow10(5.0, 3) == 5000.0
+
+  assert pow10(100.0, -1) == 10.0
+  assert pow10(100.0, -2) == 1.0
+
+  # getNextChar
+
+  block:
+    var s = newParserState(newStringStream("""
+ab c
+de"""))
+    assert(s.line == 1 and s.column == 1)
+
+    assertEq(s.getNextChar(), 'a')
+    assert(s.line == 1 and s.column == 2)
+
+    assertEq(s.getNextChar(), 'b')
+    assert(s.line == 1 and s.column == 3)
+
+    assertEq(s.getNextChar(), ' ')
+    assert(s.line == 1 and s.column == 4)
+
+    assertEq(s.getNextChar(), 'c')
+    assert(s.line == 1 and s.column == 5)
+
+    # Let's add some juice to this boring test...
+    s.pushBackChar('d')
+    assertEq(s.getNextChar(), 'd')
+    assert(s.line == 1 and s.column == 5)
+
+    assertEq(s.getNextChar(), '\l')
+    assert(s.line == 2 and s.column == 1)
+
+    assertEq(s.getNextChar(), 'd')
+    assert(s.line == 2 and s.column == 2)
+
+    assertEq(s.getNextChar(), 'e')
+    assert(s.line == 2 and s.column == 3)
+
+    assertEq(s.getNextChar(), '\0')
+
+  # getNextNonWhitespace
+
+  block:
+    var s = newParserState(newStringStream("ab c\td # Comment\ne\rf"))
+
+    assert(s.line == 1 and s.column == 1)
+
+    assertEq(s.getNextNonWhitespace(skipNoLf), 'a')
+    assert(s.line == 1 and s.column == 2)
+
+    assertEq(s.getNextNonWhitespace(skipNoLf), 'b')
+    assert(s.line == 1 and s.column == 3)
+
+    assertEq(s.getNextNonWhitespace(skipNoLf), 'c')
+    assert(s.line == 1 and s.column == 5)
+
+    assertEq(s.getNextNonWhitespace(skipNoLf), 'd')
+    assert(s.line == 1 and s.column == 7)
+
+    assertEq(s.getNextNonWhitespace(skipNoLf), '\l')
+    assert(s.line == 2 and s.column == 1)
+
+    assertEq(s.getNextNonWhitespace(skipNoLf), 'e')
+    assert(s.line == 2 and s.column == 2)
+
+    assertEq(s.getNextNonWhitespace(skipNoLf), 'f')
+    assert(s.line == 2 and s.column == 3)
+
+    assertEq(s.getNextNonWhitespace(skipNoLf), '\0')
+
+
+  block:
+    var s = newParserState(newStringStream("ab c\td # Comment\ne\rf"))
+
+    assert(s.line == 1 and s.column == 1)
+
+    assertEq(s.getNextNonWhitespace(skipLf), 'a')
+    assert(s.line == 1 and s.column == 2)
+
+    assertEq(s.getNextNonWhitespace(skipLf), 'b')
+    assert(s.line == 1 and s.column == 3)
+
+    assertEq(s.getNextNonWhitespace(skipLf), 'c')
+    assert(s.line == 1 and s.column == 5)
+
+    assertEq(s.getNextNonWhitespace(skipLf), 'd')
+    assert(s.line == 1 and s.column == 7)
+
+    assertEq(s.getNextNonWhitespace(skipLf), 'e')
+    assert(s.line == 2 and s.column == 2)
+
+    assertEq(s.getNextNonWhitespace(skipLf), 'f')
+    assert(s.line == 2 and s.column == 3)
+
+    assertEq(s.getNextNonWhitespace(skipLf), '\0')
+
+  # charToInt
+
+  assertEq(charToInt('0', base10), 0)
+  assertEq(charToInt('1', base10), 1)
+  assertEq(charToInt('2', base10), 2)
+  assertEq(charToInt('3', base10), 3)
+  assertEq(charToInt('4', base10), 4)
+  assertEq(charToInt('5', base10), 5)
+  assertEq(charToInt('6', base10), 6)
+  assertEq(charToInt('7', base10), 7)
+  assertEq(charToInt('8', base10), 8)
+  assertEq(charToInt('9', base10), 9)
+
+  assertEq(charToInt('0', base16), 0)
+  assertEq(charToInt('1', base16), 1)
+  assertEq(charToInt('2', base16), 2)
+  assertEq(charToInt('3', base16), 3)
+  assertEq(charToInt('4', base16), 4)
+  assertEq(charToInt('5', base16), 5)
+  assertEq(charToInt('6', base16), 6)
+  assertEq(charToInt('7', base16), 7)
+  assertEq(charToInt('8', base16), 8)
+  assertEq(charToInt('9', base16), 9)
+  assertEq(charToInt('a', base16), 10)
+  assertEq(charToInt('b', base16), 11)
+  assertEq(charToInt('c', base16), 12)
+  assertEq(charToInt('d', base16), 13)
+  assertEq(charToInt('e', base16), 14)
+  assertEq(charToInt('f', base16), 15)
+  assertEq(charToInt('A', base16), 10)
+  assertEq(charToInt('B', base16), 11)
+  assertEq(charToInt('C', base16), 12)
+  assertEq(charToInt('D', base16), 13)
+  assertEq(charToInt('E', base16), 14)
+  assertEq(charToInt('F', base16), 15)
+
+  # parseInt
+
+  block:
+    var s = newParserState(newStringStream("1063"))
+    assertEq(parseInt(s, base10, LeadingChar.DenyZero), 1063)
+
+  block:
+    var s = newParserState(newStringStream("fFa05B"))
+    assertEq(parseInt(s, base16, LeadingChar.DenyZero), 16752731)
+
+  block:
+    var s = newParserState(newStringStream("01063"))
+
+    try:
+      discard parseInt(s, base10, LeadingChar.DenyZero)
+      assert false, "An exception should have been raised here!"
+    except:
+      discard
+
+  block:
+    var s = newParserState(newStringStream("01063"))
+
+    assertEq(parseInt(s, base10, LeadingChar.AllowZero), 1063)
+
+  # parseDecimalPart
+
+  block:
+    var s = newParserState(newStringStream("24802"))
+    # The result should be 0.24802. We check it using integer
+    # arithmetic, instead of using the |x - x_expected| < eps...
+    assertEq(int(100000 * parseDecimalPart(s)), 24802)
+
+
+  # parseDateTimePart
+
+  block:
+    # We do not include the "YYYY-" part, see the implementation
+    # of "praseDateTime" to know why
+    var s = newParserState(newStringStream("12-06T11:34:01+13:24"))
+    var value: TomlDateTime
+    parseDateTimePart(s, value)
+
+    assertEq(value.month, 12)
+    assertEq(value.day, 6)
+    assertEq(value.hour, 11)
+    assertEq(value.minute, 34)
+    assertEq(value.second, 01)
+    assertEq(value.shift, true)
+    assertEq(value.isShiftPositive, true)
+    assertEq(value.zoneHourShift, 13)
+    assertEq(value.zoneMinuteShift, 24)
+
+  block:
+    var s = newParserState(newStringStream("12-06T11:34:01Z"))
+    var value: TomlDateTime
+    parseDateTimePart(s, value)
+
+    assertEq(value.month, 12)
+    assertEq(value.day, 6)
+    assertEq(value.hour, 11)
+    assertEq(value.minute, 34)
+    assertEq(value.second, 01)
+    assertEq(value.shift, false)
+
+  block:
+    # We do not include the "YYYY-" part, see the implementation
+    # of "praseDateTime" to know why
+    var s = newParserState(newStringStream("12-06T11:34:01-13:24"))
+    var value: TomlDateTime
+    parseDateTimePart(s, value)
+
+    assertEq(value.month, 12)
+    assertEq(value.day, 6)
+    assertEq(value.hour, 11)
+    assertEq(value.minute, 34)
+    assertEq(value.second, 01)
+    assertEq(value.shift, true)
+    assertEq(value.isShiftPositive, false)
+    assertEq(value.zoneHourShift, 13)
+    assertEq(value.zoneMinuteShift, 24)
+
+  # parseSingleLineString
+
+  block:
+    var s = newParserState(newStringStream("double string\t\"blahblah"))
+    assert parseSingleLineString(s, StringType.Basic) == "double string\t"
+
+  block:
+    # Escape sequences
+    var s = newParserState(newStringStream('\b' & '\f' & '\l' & '\r' & '\\' &
+      '\"' & '\"'))
+    assert parseSingleLineString(s, StringType.Basic) == "\b\f\l\r\""
+
+  block:
+    # Unicode
+    var s = newParserState(newStringStream(r"\u59\U2126\u1f600"""))
+    assert parseSingleLineString(s, StringType.Basic) == "YΩ😀"
+
+  # parseMultiLineString
+
+  block:
+    var s = newParserState(newStringStream("\ntest\"\"\"blah"))
+    # TODO: add tests here
+    discard parseMultiLineString(s, StringType.Basic)
+
+  # parseArray
+
+  block:
+    var s = newParserState(newStringStream("1, 2, 3, 4]blah"))
+    let arr = parseArray(s)
+
+    assertEq(arr.len(), 4)
+    assert arr[0].kind == TomlValueKind.Int and arr[0].intVal == 1
+    assert arr[1].kind == TomlValueKind.Int and arr[1].intVal == 2
+    assert arr[2].kind == TomlValueKind.Int and arr[2].intVal == 3
+    assert arr[3].kind == TomlValueKind.Int and arr[3].intVal == 4
+
+  block:
+    var s = newParserState(newStringStream("\"a\", \"bb\", \"ccc\"]blah"))
+    let arr = parseArray(s)
+
+    assertEq(arr.len(), 3)
+    assert arr[0].kind == TomlValueKind.String and arr[0].stringVal == "a"
+    assert arr[1].kind == TomlValueKind.String and arr[1].stringVal == "bb"
+    assert arr[2].kind == TomlValueKind.String and arr[2].stringVal == "ccc"
+
+  block:
+    # Array elements of heterogeneous types are forbidden
+    var s = newParserState(newStringStream("1, 2.0, \"foo\"]blah"))
+
     try:
       discard parseArray(s) # This should raise an exception
       assert false # If we reach this, there's something wrong
