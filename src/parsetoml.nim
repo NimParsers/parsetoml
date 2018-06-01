@@ -141,7 +141,7 @@ proc getNextNonWhitespace(state: var ParserState,
     nextChar = state.getNextChar()
     if nextChar == '#':
       # Skip the comment up to the newline, but do not jump over it
-      while nextChar != '\l':
+      while nextChar != '\l' and nextChar != '\0':
         nextChar = state.getNextChar()
 
     if nextChar notin whitespaces: break
@@ -545,8 +545,8 @@ proc parseDateTimePart(state: var ParserState,
       parseIntAndCheckBounds(state, 0, 59,
                              "invalid number of shift minutes")
   else:
-    raise(newTomlError(state, "unexpected character \"" & nextChar &
-                       "\" instead of the time zone"))
+    raise(newTomlError(state, "unexpected character " & escape($nextChar) &
+                       " instead of the time zone"))
 
 proc pow10(x: float64, pow: int64): float64 {.inline.} =
   if pow == 0:
@@ -658,7 +658,7 @@ proc parseValue(state: var ParserState): TomlValueRef =
 
   else:
     raise(newTomlError(state,
-                       "unexpected character \"" & nextChar & "\""))
+                       "unexpected character " & escape($nextChar)))
 
 proc parseName(state: var ParserState): string =
   # This parses the name of a key or a table
@@ -678,7 +678,7 @@ proc parseName(state: var ParserState): string =
       break
     elif (nextChar notin {'a'..'z', 'A'..'Z', '0'..'9', '_', '-'}):
       raise(newTomlError(state,
-                         "bare key has illegal character"))
+        "bare key has illegal character: " & escape($nextChar)))
     else:
       result.add(nextChar)
 
@@ -716,14 +716,14 @@ proc parseTableName(state: var ParserState,
       nextChar = state.getNextNonWhitespace(skipNoLf)
       if nextChar != '\l':
         raise(newTomlError(state,
-                           "unexpected character \"" & nextChar & "\""))
+                           "unexpected character " & escape($nextChar)))
 
       break
 
     of '.': continue
     else:
       raise(newTomlError(state,
-                         "unexpected character \"" & nextChar & "\""))
+                         "unexpected character " & escape($nextChar)))
 
 proc parseInlineTable(state: var ParserState, tableRef: var TomlTableRef) =
   while true:
@@ -771,9 +771,9 @@ proc parseKeyValuePair(state: var ParserState, tableRef: var TomlTableRef) =
 
     # We must check that there is nothing else in this line
     nextChar = state.getNextNonWhitespace(skipNoLf)
-    if nextChar != '\l':
+    if nextChar != '\l' and nextChar != '\0':
       raise(newTomlError(state,
-                         "unexpected character \"" & nextChar & "\""))
+                         "unexpected character " & escape($nextChar)))
 
     if tableRef.hasKey(key):
       raise(newTomlError(state,
@@ -976,7 +976,7 @@ proc parseStream*(inputStream: streams.Stream,
       raise(newTomlError(state, "key name missing"))
     of '#', '.', ']':
       raise(newTomlError(state,
-                         "unexpected character \"" & nextChar & "\""))
+                         "unexpected character " & escape($nextChar)))
     of '\0': # EOF
       return
     else:
@@ -1591,3 +1591,207 @@ proc copy*(p: TomlValueRef): TomlValueRef =
   of TomlValueKind.DateTime:
     deepCopy(result, p)
 
+    try:
+      discard parseArray(s) # This should raise an exception
+      assert false # If we reach this, there's something wrong
+    except TomlError:
+      discard # That's expected
+
+  # Arrays of tables (they're tricky to implement!)
+
+  block: # issue #20
+    try:
+      let table = parseString("""
+[general]
+data = 1""") # Notice that there's no newline, with it everything works
+
+      assertEq(table.getTable("general").getInt("data"), 1)
+    except TomlError:
+      assert false # If we reach this, there's something wrong
+
+  try:
+    let table = parseString("""
+alone = 1
+
+[input]
+flags = true
+
+[output]
+int_value = 6
+str_value = "This is a test"
+
+[deeply.nested]
+hello_there = 1.0e+2
+""")
+
+    assertEq(table.len(), 4)
+    assertEq(table["alone"].kind, TomlValueKind.Int)
+    assertEq(table["alone"].intVal, 1)
+
+    block:
+      assertEq(table["input"].kind, TomlValueKind.Table)
+      let inputTable = table["input"].tableVal
+      assertEq(inputTable.len(), 1)
+      assertEq(inputTable["flags"].kind, TomlValueKind.Bool)
+      assertEq(inputTable["flags"].boolVal, true)
+
+    block:
+      assertEq(table["output"].kind, TomlValueKind.Table)
+      let outputTable = table["output"].tableVal
+      assertEq(outputTable.len(), 2)
+      assertEq(outputTable["int_value"].kind, TomlValueKind.Int)
+      assertEq(outputTable["int_value"].intVal, 6)
+      assertEq(outputTable["str_value"].kind, TomlValueKind.String)
+      assertEq(outputTable["str_value"].stringVal, "This is a test")
+
+    block:
+      assertEq(table["deeply"].kind, TomlValueKind.Table)
+      let deeplyTable = table["deeply"].tableVal
+      assertEq(deeplyTable["nested"].kind, TomlValueKind.Table)
+      let nestedTable = deeplyTable["nested"].tableVal
+      assertEq(nestedTable.len(), 1)
+      assertEq(nestedTable["hello_there"].kind, TomlValueKind.Float)
+      assertEq(nestedTable["hello_there"].floatVal, 100.0)
+
+  except TomlError:
+    let loc = (ref TomlError)(getCurrentException()).location
+    echo loc.filename & ":" & $(loc.line) & ":" & $(loc.column) & ":" &
+      getCurrentExceptionMsg()
+
+  let fruitTable = parseString("""
+[[fruit]]
+name = "apple"
+
+[fruit.physical]
+  color = "red"
+  shape = "round"
+
+[[fruit.variety]]
+  name = "red delicious"
+
+[[fruit.variety]]
+  name = "granny smith"
+
+[[fruit]]
+name = "banana"
+
+[[fruit.variety]]
+  name = "plantain"
+""")
+
+  assertEq(fruitTable.len(), 1)
+  assertEq(fruitTable["fruit"].kind, TomlValueKind.Array)
+  assertEq(fruitTable["fruit"].arrayVal[0].kind, TomlValueKind.Table)
+  assertEq(fruitTable["fruit"].arrayVal[0].tableVal.len(), 3)
+  assertEq(fruitTable["fruit"].arrayVal[0].tableVal["name"].kind,
+           TomlValueKind.String)
+  assertEq(fruitTable["fruit"].arrayVal[0].tableVal["name"].stringVal, "apple")
+  assertEq(fruitTable["fruit"].arrayVal[0].tableVal["physical"].kind,
+           TomlValueKind.Table)
+  assertEq(fruitTable["fruit"].arrayVal[0].tableVal["variety"].kind,
+           TomlValueKind.Array)
+
+  block:
+    let varietyTable =
+      fruitTable["fruit"].arrayVal[0].tableVal["variety"].arrayVal
+    assertEq(varietyTable.len(), 2)
+    assertEq(varietyTable[0].kind, TomlValueKind.Table)
+    assertEq(varietyTable[0].tableVal["name"].kind, TomlValueKind.String)
+    assertEq(varietyTable[0].tableVal["name"].stringVal, "red delicious")
+    assertEq(varietyTable[1].kind, TomlValueKind.Table)
+    assertEq(varietyTable[1].tableVal["name"].kind, TomlValueKind.String)
+    assertEq(varietyTable[1].tableVal["name"].stringVal, "granny smith")
+
+  assertEq(fruitTable["fruit"].arrayVal[1].kind, TomlValueKind.Table)
+  assertEq(fruitTable["fruit"].arrayVal[1].tableVal.len(), 2)
+
+  assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].kind,
+           TomlValueKind.String)
+  assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].stringVal, "banana")
+  assertEq(fruitTable["fruit"].arrayVal[1].tableVal["variety"].kind,
+           TomlValueKind.Array)
+
+  block:
+    let varietyTable =
+      fruitTable["fruit"].arrayVal[1].tableVal["variety"].arrayVal
+    assertEq(varietyTable.len(), 1)
+    assertEq(varietyTable[0].kind, TomlValueKind.Table)
+    assertEq(varietyTable[0].tableVal["name"].kind, TomlValueKind.String)
+    assertEq(varietyTable[0].tableVal["name"].stringVal, "plantain")
+
+
+  # getValueFromFullAddr
+
+  block:
+    let node = getValueFromFullAddr(fruitTable, "fruit[1].variety[0].name")
+    assertEq(node.kind, TomlValueKind.String)
+    assertEq(node.stringVal, "plantain")
+
+  block:
+    # Wrong index
+    let node = getValueFromFullAddr(fruitTable, "fruit[3]")
+    assertEq(node.kind, TomlValueKind.None)
+
+  block:
+    # Dangling dot
+    let node = getValueFromFullAddr(fruitTable, "fruit[0].")
+    assertEq(node.kind, TomlValueKind.None)
+
+  # getString
+
+  assertEq(fruitTable.getString("fruit[0].name"), "apple")
+  assertEq(fruitTable.getString("fruit[0].physical.shape"), "round")
+
+  try:
+    assertEq(fruitTable.getString("fruit[0].this_does_not_exist"), "")
+    assert false, "We should have never reached this line!"
+  except:
+    discard
+
+  assertEq(fruitTable.getString("fruit[0].color", "yellow"), "yellow")
+
+  # get??Array
+
+  let arrayTable = parseString("""
+empty = []
+intArr = [1, 2, 3, 4, 5]
+floatArr = [10.0, 11.0, 12.0, 13.0]
+boolArr = [false, true]
+stringArr = ["foo", "bar", "baz"]
+dateTimeArr = [1978-02-07T01:02:03Z]
+""")
+
+  template checkGetArrayFunc(keyName: string,
+                             funcName: untyped,
+                             reference: untyped) =
+    let arr = arrayTable.funcName(keyName)
+
+    assertEq(len(arr), len(reference))
+    for idx in countup(low(arr), high(arr)):
+      assertEq(arr[idx], reference[idx])
+
+  assertEq(len(getIntArray(arrayTable, "empty")), 0)
+  assertEq(len(getFloatArray(arrayTable, "empty")), 0)
+  assertEq(len(getBoolArray(arrayTable, "empty")), 0)
+  assertEq(len(getStringArray(arrayTable, "empty")), 0)
+  assertEq(len(getDateTimeArray(arrayTable, "empty")), 0)
+
+  checkGetArrayFunc("intArr", getIntArray, [1, 2, 3, 4, 5])
+  checkGetArrayFunc("floatArr", getFloatArray, [10.0, 11.0, 12.0, 13.0])
+  checkGetArrayFunc("boolArr", getBoolArray, [false, true])
+  checkGetArrayFunc("stringArr", getStringArray, ["foo", "bar", "baz"])
+
+  block:
+    let referenceDate = TomlDateTime(year: 1978, month: 2, day: 7,
+                                     hour: 1, minute: 2, second: 3,
+                                     shift: false)
+
+    let arr = arrayTable.getDateTimeArray("dateTimeArr")
+    assertEq(len(arr), 1)
+    assertEq(arr[0].year, referenceDate.year)
+    assertEq(arr[0].month, referenceDate.month)
+    assertEq(arr[0].day, referenceDate.day)
+    assertEq(arr[0].hour, referenceDate.hour)
+    assertEq(arr[0].minute, referenceDate.minute)
+    assertEq(arr[0].second, referenceDate.second)
+    assertEq(arr[0].shift, referenceDate.shift)
