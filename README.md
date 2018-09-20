@@ -2,10 +2,10 @@
 
 Parsetoml is a Nim library to parse TOML files
 (https://github.com/toml-lang/toml). Currently it supports
-[v0.4.0](https://github.com/toml-lang/toml/tree/v0.4.0)
-of the TOML specification. It passes all but one of the validation tests in the
-[validation suite](https://github.com/BurntSushi/toml-test), failing only the
-duplicate table value test.
+[v0.5.0](https://github.com/toml-lang/toml/tree/v0.5.0)
+of the TOML specification. It passes all of the validation tests in the
+[validation suite](https://github.com/BurntSushi/toml-test), including various
+0.5.0 examples.
 
 
 ## Installation

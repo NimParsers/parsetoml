@@ -37,21 +37,29 @@ type
     Float,
     Bool,
     Datetime,
+    Date,
+    Time,
     String,
     Array,
     Table
 
-  TomlDateTime* = object
+  TomlDate* = object
     year*: int
     month*: int
     day*: int
+
+  TomlTime* = object
     hour*: int
     minute*: int
     second*: int
     subsecond*: int
-    case shift: bool
+
+  TomlDateTime* = object
+    date*: TomlDate
+    time*: TomlTime
+    case shift*: bool
     of true:
-      isShiftPositive: bool
+      isShiftPositive*: bool
       zoneHourShift*: int
       zoneMinuteShift*: int
     of false: nil
@@ -67,6 +75,8 @@ type
     of TomlValueKind.Float: floatVal*: float64
     of TomlValueKind.Bool: boolVal*: bool
     of TomlValueKind.Datetime: dateTimeVal*: TomlDateTime
+    of TomlValueKind.Date: dateVal*: TomlDate
+    of TomlValueKind.Time: timeVal*: TomlTime
     of TomlValueKind.String: stringVal*: string
     of TomlValueKind.Array: arrayVal*: seq[TomlValueRef]
     of TomlValueKind.Table: tableVal*: TomlTableRef
@@ -82,7 +92,7 @@ type
     location*: ParserState
 
   NumberBase = enum
-    base10, base16
+    base10, base16, base8, base2
 
   StringType {.pure.} = enum
     Basic,  # Enclosed within double quotation marks
@@ -150,7 +160,7 @@ proc getNextNonWhitespace(state: var ParserState,
 
 proc charToInt(c: char, base: NumberBase): int {.inline, noSideEffect.} =
   case base
-  of base10: result = int(c) - int('0')
+  of base10, base8, base2: result = int(c) - int('0')
   of base16:
     if c in strutils.Digits:
       result = charToInt(c, base10)
@@ -172,9 +182,13 @@ proc parseInt(state: var ParserState,
 
   let
     baseNum = (case base
+               of base2: 2
+               of base8: 8
                of base10: 10
                of base16: 16)
     digits = (case base
+              of base2: {'0', '1'}
+              of base8: {'0', '1', '2', '3', '4', '5', '6', '7'}
               of base10: strutils.Digits
               of base16: strutils.HexDigits)
 
@@ -186,9 +200,6 @@ proc parseInt(state: var ParserState,
       if firstPos or wasUnderscore:
         raise(newTomlError(state,
                            "underscore must be surrounded by digit"))
-      elif base == base16:
-        raise(newTomlError(state,
-                           "underscore not allowed in unicode"))
       continue
 
     if nextChar in {'+', '-'} and firstPos:
@@ -221,12 +232,27 @@ proc parseInt(state: var ParserState,
     firstPos = false
 
   if not negative:
-    result = -result
+    try:
+      result = -result
+    except OverflowError:
+      raise(newTomlError(state,
+                         "integer numbers wider than 64 bits not allowed"))
+
+proc parseEncoding(state: var ParserState): TomlValueRef =
+  let nextChar = state.getNextChar()
+  case nextChar:
+    of 'b':
+      return TomlValueRef(kind: TomlValueKind.Int, intVal: parseInt(state, base2, LeadingChar.AllowZero))
+    of 'o':
+      return TomlValueRef(kind: TomlValueKind.Int, intVal: parseInt(state, base8, LeadingChar.AllowZero))
+    of 'x':
+      return TomlValueRef(kind: TomlValueKind.Int, intVal: parseInt(state, base16, LeadingChar.AllowZero))
+    else: raise newTomlError(state, "illegal character")
 
 proc parseDecimalPart(state: var ParserState): float64 =
   var
     nextChar: char
-    invPowerOfTen = 10
+    invPowerOfTen = 10.0
     firstPos = true
     wasUnderscore = false
 
@@ -244,11 +270,15 @@ proc parseDecimalPart(state: var ParserState): float64 =
         raise(newTomlError(state,
                            "underscore must be surrounded by digit"))
       state.pushBackChar(nextChar)
+      if firstPos:
+        raise newTomlError(state, "decimal part empty")
       break
 
-    result = result + (int(nextChar) - int('0')) / invPowerOfTen
+    result = result + (int(nextChar) - int('0')).float / invPowerOfTen
     invPowerOfTen *= 10
+
     firstPos = false
+
 
 proc stringDelimiter(kind: StringType): char {.inline, noSideEffect.} =
   result = (case kind
@@ -435,8 +465,73 @@ proc parseIntAndCheckBounds(state: var ParserState,
   if result < minVal or result > maxVal:
     raise(newTomlError(state, msg & " (" & $result & ")"))
 
+proc parseStrictNum(state: var ParserState,
+                    minVal: int,
+                    maxVal: int,
+                    count: Slice[int],
+                    msg: string): int =
+  var
+    nextChar: char
+    parsedChars = 0
+
+  result = 0
+  while true:
+    nextChar = state.getNextChar()
+
+    if nextChar notin strutils.Digits:
+      state.pushBackChar(nextChar)
+      break
+
+    try:
+      result = result * 10 + charToInt(nextChar, base10)
+      parsedChars += 1
+    except OverflowError:
+      raise(newTomlError(state,
+                         "integer numbers wider than 64 bits not allowed"))
+
+  if parsedChars notin count:
+    raise(newTomlError(state,
+                       "too few or too many characters in digit, expected " &
+                       $count & " got " & $parsedChars))
+
+  if result < minVal or result > maxVal:
+    raise(newTomlError(state, msg & " (" & $result & ")"))
+
+template parseStrictNum(state: var ParserState,
+                    minVal: int,
+                    maxVal: int,
+                    count: int,
+                    msg: string): int =
+  parseStrictNum(state, minVal, maxVal, (count..count), msg)
+
+proc parseTimePart(state: var ParserState, val: var TomlTime) =
+  var
+    nextChar: char
+    curLine = state.line
+
+  # Parse the minutes
+  val.minute = parseStrictNum(state, minVal = 0, maxVal = 59, count = 2,
+                                   "number out of range for minutes")
+  if curLine != state.line:
+    raise(newTomlError(state, "invalid date field, stopped in or after minutes field"))
+
+  nextChar = state.getNextChar()
+  if nextChar != ':':
+    raise(newTomlError(state,
+                       "\":\" expected after the number of seconds"))
+
+  # Parse the second. Note that seconds=60 *can* happen (leap second)
+  val.second = parseStrictNum(state, minVal = 0, maxVal = 60, count = 2,
+                                   "number out of range for seconds")
+
+  nextChar = state.getNextChar()
+  if nextChar == '.':
+    val.subsecond = parseInt(state, base10, LeadingChar.AllowZero).int
+  else:
+    state.pushBackChar(nextChar)
+
 proc parseDateTimePart(state: var ParserState,
-                       dateTime: var TomlDateTime) =
+                       dateTime: var TomlDateTime): bool =
 
   # This function is called whenever a datetime object is found. They follow
   # an ISO convention and can use one of the following format:
@@ -460,93 +555,91 @@ proc parseDateTimePart(state: var ParserState,
 
   var
     nextChar: char
-    lastChar: int
+    curLine = state.line
 
   # Parse the month
-  lastChar = state.column
-  dateTime.month = parseIntAndCheckBounds(state, 1, 12,
-                                          "invalid number for the month")
-  if state.column - lastChar != 3:
-    echo $(state.column - lastChar)
-    raise(newTomlError(state, "month number is not exactly two digits"))
+  dateTime.date.month = parseStrictNum(state, minVal = 1, maxVal = 12, count = 2,
+                                  "number out of range for the month")
+  if curLine != state.line:
+    raise(newTomlError(state, "invalid date field, stopped in or after month field"))
 
   nextChar = state.getNextChar()
   if nextChar != '-':
     raise(newTomlError(state, "\"-\" expected after the month number"))
 
   # Parse the day
-  lastChar = state.column
-  dateTime.day = parseIntAndCheckBounds(state, 1, 31,
-                                        "invalid number for the day")
-  if state.column - lastChar != 3:
-    raise(newTomlError(state, "day number is not exactly two digits"))
-
-  nextChar = state.getNextChar()
-  if nextChar notin {'t', 'T'}:
-    raise(newTomlError(state, "\"T\" expected after the day number"))
-
-  # Parse the hour
-  lastChar = state.column
-  dateTime.hour = parseIntAndCheckBounds(state, 0, 23,
-                                         "invalid number of hours")
-  if state.column - lastChar != 3:
-    raise(newTomlError(state, "hours is not exactly two digits"))
-
-  nextChar = state.getNextChar()
-  if nextChar != ':':
-    raise(newTomlError(state, "\":\" expected after the number of hours"))
-
-  # Parse the minutes
-  lastChar = state.column
-  dateTime.minute = parseIntAndCheckBounds(state, 0, 59,
-                                           "invalid number of minutes")
-  if state.column - lastChar != 3:
-    raise(newTomlError(state, "minutes is not exactly two digits"))
-
-  nextChar = state.getNextChar()
-  if nextChar != ':':
-    raise(newTomlError(state,
-                       "\":\" expected after the number of seconds"))
-
-  # Parse the second. Note that seconds=60 *can* happen (leap second)
-  lastChar = state.column
-  dateTime.second = parseIntAndCheckBounds(state, 0, 60, "invalid second")
-  if state.column > lastChar and
-     state.column - lastChar != 3:
-    raise(newTomlError(state, "seconds is not exactly two digits"))
-
-  nextChar = state.getNextChar()
-  if nextChar == '.':
-    dateTime.subsecond = parseInt(state, base10, LeadingChar.AllowZero).int
+  dateTime.date.day = parseStrictNum(state, minVal = 1, maxVal = 31, count = 2,
+                                "number out of range for the day")
+  if curLine != state.line:
+    return false
   else:
-    state.pushBackChar(nextChar)
+    nextChar = state.getNextChar()
+    if nextChar notin {'t', 'T', ' '}:
+      raise(newTomlError(state, "\"T\", \"t\", or space expected after the day number"))
 
-  nextChar = state.getNextChar()
-  case nextChar
-  of 'z', 'Z':
-    dateTime.shift = false
-  of '+', '-':
-    dateTime.shift = true
-    dateTime.isShiftPositive = (nextChar == '+')
-    lastChar = state.column
-    dateTime.zoneHourShift =
-      parseIntAndCheckBounds(state, 0, 23,
-                             "invalid number of shift hours")
-    if state.column - lastChar != 3:
-      raise(newTomlError(state, "shift hours is not exactly two digits"))
+    # Parse the hour
+    dateTime.time.hour = parseStrictNum(state, minVal = 0, maxVal = 23, count = 2,
+                                   "number out of range for the hours")
+    if curLine != state.line:
+      raise(newTomlError(state, "invalid date field, stopped in or after hours field"))
+
+    nextChar = state.getNextChar()
+    if nextChar != ':':
+      raise(newTomlError(state, "\":\" expected after the number of hours"))
+
+    # Parse the minutes
+    dateTime.time.minute = parseStrictNum(state, minVal = 0, maxVal = 59, count = 2,
+                                     "number out of range for minutes")
+    if curLine != state.line:
+      raise(newTomlError(state, "invalid date field, stopped in or after minutes field"))
 
     nextChar = state.getNextChar()
     if nextChar != ':':
       raise(newTomlError(state,
-                         "\":\" expected after the number of shift hours"))
+                         "\":\" expected after the number of seconds"))
 
-    lastChar = state.column
-    dateTime.zoneMinuteShift =
-      parseIntAndCheckBounds(state, 0, 59,
-                             "invalid number of shift minutes")
-  else:
-    raise(newTomlError(state, "unexpected character " & escape($nextChar) &
-                       " instead of the time zone"))
+    # Parse the second. Note that seconds=60 *can* happen (leap second)
+    dateTime.time.second = parseStrictNum(state, minVal = 0, maxVal = 60, count = 2,
+                                     "number out of range for seconds")
+
+    nextChar = state.getNextChar()
+    if nextChar == '.':
+      dateTime.time.subsecond = parseInt(state, base10, LeadingChar.AllowZero).int
+    else:
+      state.pushBackChar(nextChar)
+
+    nextChar = state.getNextChar()
+    case nextChar
+    of 'z', 'Z':
+      dateTime.shift = true
+      dateTime.isShiftPositive = true
+      dateTime.zoneHourShift = 0
+      dateTime.zoneMinuteShift = 0
+    of '+', '-':
+      dateTime.shift = true
+      dateTime.isShiftPositive = (nextChar == '+')
+      dateTime.zoneHourShift =
+        parseStrictNum(state, minVal = 0, maxVal = 23, count = 2,
+                               "number out of range for shift hours")
+      if curLine != state.line:
+        raise(newTomlError(state, "invalid date field, stopped in or after shift hours field"))
+
+      nextChar = state.getNextChar()
+      if nextChar != ':':
+        raise(newTomlError(state,
+                           "\":\" expected after the number of shift hours"))
+
+      dateTime.zoneMinuteShift =
+        parseStrictNum(state, minVal = 0, maxVal = 59, count = 2,
+                               "number out of range for shift minutes")
+    else:
+      if curLine == state.line:
+        raise(newTomlError(state, "unexpected character " & escape($nextChar) &
+                           " instead of the time zone"))
+      else:
+        dateTime.shift = false
+
+    return true
 
 proc pow10(x: float64, pow: int64): float64 {.inline.} =
   if pow == 0:
@@ -562,66 +655,190 @@ proc pow10(x: float64, pow: int64): float64 {.inline.} =
   for idx in countup(1'i64, abs(pow)):
     result *= mulFactor
 
+proc parseDateOrTime(state: var ParserState, digits: int, yearOrHour: int): TomlValueRef =
+  var
+    nextChar: char
+    yoh = yearOrHour
+    d = digits
+  while true:
+    nextChar = state.getNextChar()
+    case nextChar:
+      of ':':
+        if d != 2:
+          raise newTomlError(state, "wrong number of characters for hour")
+        var val: TomlTime
+        val.hour = yoh
+
+        parseTimePart(state, val)
+        return TomlValueRef(kind: TomlValueKind.Time, timeVal: val)
+      of '-':
+        if d != 4:
+          raise newTomlError(state, "wrong number of characters for year")
+        var val: TomlDateTime
+        val.date.year = yoh
+        let fullDate = parseDateTimePart(state, val)
+
+        if fullDate:
+          return TomlValueRef(kind: TomlValueKind.DateTime,
+                                dateTimeVal: val)
+        else:
+          return TomlValueRef(kind: TomlValueKind.Date,
+                                dateVal: val.date)
+      of strutils.Digits:
+        if d == 4:
+          raise newTomlError(state, "leading zero not allowed")
+        try:
+          yoh *= 10
+          yoh += ord(nextChar) - ord('0')
+          d += 1
+        except OverflowError:
+          raise newTomlError(state, "number larger than 64 bits wide")
+        continue
+      of strutils.Whitespace:
+        raise newTomlError(state, "leading zero not allowed")
+      else: raise newTomlError(state, "illegal character")
+    break
+
+proc parseFloat(state: var ParserState, intPart: int, negative: bool): TomlValueRef =
+  var
+    decimalpart = parseDecimalPart(state)
+    nextChar = state.getNextChar()
+    exponent: int64 = 0
+  if nextChar in {'e', 'E'}:
+    exponent = parseInt(state, base10, LeadingChar.AllowZero)
+  else:
+    state.pushBackChar(nextChar)
+
+  let value =
+    if intPart < 0:
+      pow10(float64(intPart) - decimalPart, exponent)
+    else:
+      pow10(float64(intPart) + decimalPart, exponent)
+  return TomlValueRef(kind: TomlValueKind.Float, floatVal: if negative: -value else: value)
+
+proc parseNumOrDate(state: var ParserState): TomlValueRef =
+  type
+    Sign = enum None, Pos, Neg
+  var
+    nextChar: char
+    forcedSign: Sign = None
+
+  while true:
+    nextChar = state.getNextChar()
+    case nextChar:
+      of '0':
+        nextChar = state.getNextChar()
+        if forcedSign == None:
+          if nextChar in {'b', 'x', 'o'}:
+            state.pushBackChar(nextChar)
+            return parseEncoding(state)
+          else:
+            # This must now be a float or a date/time, or a sole 0
+            case nextChar:
+              of '.':
+                return parseFloat(state, 0, false)
+              of strutils.Whitespace:
+                state.pushBackChar(nextChar)
+                return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
+              of strutils.Digits:
+                # This must now be a date/time
+                return parseDateOrTime(state, digits = 2, yearOrHour = ord(nextChar) - ord('0'))
+              else:
+                raise newTomlError(state, "leading zero not allowed")
+        else:
+          # This must now be a float, or a sole 0
+          nextChar = state.getNextChar()
+          case nextChar:
+            of '.':
+              return parseFloat(state, 0, forcedSign == Neg)
+            of strutils.Whitespace:
+              state.pushBackChar(nextChar)
+              return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
+            else:
+              raise newTomlError(state, "leading zero not allowed")
+      of strutils.Digits - {'0'}:
+        # This might be a date/time, or an int or a float
+        var
+          digits = 1
+          curSum = ord('0') - ord(nextChar)
+          wasUnderscore = false
+        while true:
+          nextChar = state.getNextChar()
+          case nextChar:
+            of ':':
+              if digits != 2:
+                raise newTomlError(state, "wrong number of characters for hour")
+              var val: TomlTime
+              val.hour = curSum
+              parseTimePart(state, val)
+              return TomlValueRef(kind: TomlValueKind.Time, timeVal: val)
+            of '-':
+              if digits != 4:
+                raise newTomlError(state, "wrong number of characters for year")
+              var val: TomlDateTime
+              val.date.year = -curSum
+              let fullDate = parseDateTimePart(state, val)
+              if fullDate:
+                return TomlValueRef(kind: TomlValueKind.DateTime,
+                                      dateTimeVal: val)
+              else:
+                return TomlValueRef(kind: TomlValueKind.Date,
+                                      dateVal: val.date)
+            of '.':
+              return parseFloat(state, curSum, forcedSign != Neg)
+            of strutils.Digits:
+              try:
+                curSum *= 10
+                curSum += ord('0') - ord(nextChar)
+                digits += 1
+              except OverflowError:
+                raise newTomlError(state, "number larger than 64 bits wide")
+              wasUnderscore = false
+              continue
+            of '_':
+              if wasUnderscore:
+                raise newTomlError(state, "underscores must be surrounded by digits")
+              wasUnderscore = true
+              continue
+            of strutils.Whitespace:
+              state.pushBackChar(nextChar)
+              if wasUnderscore:
+                raise newTomlError(state, "underscores must be surrounded by digits")
+              return TomlValueRef(kind: TomlValueKind.Int, intVal: if forcedSign == Neg: curSum else: -curSum)
+            else:
+              state.pushBackChar(nextChar)
+              return TomlValueRef(kind: TomlValueKind.Int, intVal: if forcedSign == Neg: curSum else: -curSum)
+          break
+      of '+', '-':
+        forcedSign = if nextChar == '+': Pos else: Neg
+        continue
+      of 'i':
+        #  Is this "inf"?
+        let oldState = state
+        if state.getNextChar() != 'n' or
+           state.getNextChar() != 'f':
+            raise(newTomlError(oldState, "unknown identifier"))
+        return TomlValueRef(kind: TomlValueKind.Float, floatVal: if forcedSign == Neg: NegInf else: Inf)
+
+      of 'n':
+        #  Is this "nan"?
+        let oldState = state
+        if state.getNextChar() != 'a' or
+           state.getNextChar() != 'n':
+            raise(newTomlError(oldState, "unknown identifier"))
+        return TomlValueRef(kind: TomlValueKind.Float, floatVal: Nan)
+      else:
+        raise newTomlError(state, "illegal character " & escape($nextChar))
+    break
+
 proc parseValue(state: var ParserState): TomlValueRef =
   var nextChar: char
 
   nextChar = state.getNextNonWhitespace(skipNoLf)
   case nextChar
-  of strutils.Digits, '+', '-':
-    let
-      surelyNotDateTime = nextChar in {'+', '-'}
-      negative = nextChar == '-'
+  of strutils.Digits, '+', '-', 'i', 'n':
     state.pushBackChar(nextChar)
-
-    # We can either have an integer, a float or a datetime
-    let intPart = parseInt(state, base10, LeadingChar.DenyZero)
-    nextChar = state.getNextChar()
-    case nextChar
-    of 'e', 'E':
-      let exponent = parseInt(state, base10, LeadingChar.AllowZero)
-      let value = pow10(float64(intPart), exponent)
-      result = TomlValueRef(kind: TomlValueKind.Float,
-                            floatVal: (if negative and value >= 0: -value else: value))
-    of '.':
-      nextChar = state.getNextChar()
-      if nextChar notin strutils.Digits:
-        raise(newTomlError(state, "dot not followed by digit in float"))
-      state.pushBackChar(nextChar)
-      let decimalPart = parseDecimalPart(state)
-      nextChar = state.getNextChar()
-      var exponent: int64 = 0
-      if nextChar in {'e', 'E'}:
-        exponent = parseInt(state, base10, LeadingChar.AllowZero)
-      else:
-        state.pushBackChar(nextChar)
-
-      let value =
-        if intPart < 0:
-          pow10(float64(intPart) - decimalPart, exponent)
-        else:
-          pow10(float64(intPart) + decimalPart, exponent)
-      result = TomlValueRef(kind: TomlValueKind.Float,
-                            floatVal: (if negative and value >= 0: -value else: value))
-    of '-':
-      if surelyNotDateTime:
-        raise(newTomlError(state, "unexpected character \"-\""))
-
-      # This might be a datetime object
-      var val: TomlDateTime
-      val.year = int(intPart)
-      # We assume a year has 4 digits
-      if val.year < 1000 or val.year > 9999:
-        raise(newTomlError(state, "invalid year (" & $val.year & ")"))
-
-      parseDateTimePart(state, val)
-
-      result = TomlValueRef(kind: TomlValueKind.DateTime,
-                            dateTimeVal: val)
-    else:
-      state.pushBackChar(nextChar)
-      result = TomlValueRef(kind: TomlValueKind.Int,
-                            intVal: (if negative and intPart >= 0: -intPart else: intPart))
-
+    return parseNumOrDate(state)
   of 't':
     # Is this "true"?
     let oldState = state # Only used for error messages
@@ -664,7 +881,7 @@ proc parseName(state: var ParserState): string =
   # This parses the name of a key or a table
   result = newStringOfCap(defaultStringCapacity)
 
-  var nextChar = state.getNextChar()
+  var nextChar = state.getNextNonWhitespace(skipNoLf)
   if nextChar == '\"':
     return state.parseString(StringType.Basic)
   elif nextChar == '\'':
@@ -672,7 +889,7 @@ proc parseName(state: var ParserState): string =
   state.pushBackChar(nextChar)
   while true:
     nextChar = state.getNextChar()
-    if (nextChar in {'=', '.', '[', ']', '\0', ' '}):
+    if (nextChar in {'=', '.', '[', ']', '\0', ' ', '\t'}):
       # Any of the above characters marks the end of the name
       state.pushBackChar(nextChar)
       break
@@ -703,7 +920,7 @@ proc parseTableName(state: var ParserState,
       partName = state.parseName()
     result.add(partName)
 
-    nextChar = state.getNextChar()
+    nextChar = state.getNextNonWhitespace(skipNoLf)
     case nextChar
     of ']':
       if brackets == BracketType.double:
@@ -714,7 +931,7 @@ proc parseTableName(state: var ParserState,
 
       # We must check that there is nothing else in this line
       nextChar = state.getNextNonWhitespace(skipNoLf)
-      if nextChar != '\l':
+      if nextChar notin {'\l', '\0'}:
         raise(newTomlError(state,
                            "unexpected character " & escape($nextChar)))
 
@@ -755,13 +972,28 @@ proc createTableDef(state: var ParserState,
                     curTableRef: var TomlTableRef,
                     tableNames: seq[string])
 
-proc parseKeyValuePair(state: var ParserState, tableRef: var TomlTableRef) =
-  let key = state.parseName()
+proc parseKeyValuePair(state: var ParserState, inTableRef: var TomlTableRef) =
+  var
+    tableKeys: seq[string]
+    key: string
+    tableRef = inTableRef
+    nextChar: char
 
-  var nextChar = state.getNextNonWhitespace(skipNoLf)
+  while true:
+    let subkey = state.parseName()
+
+    nextChar = state.getNextNonWhitespace(skipNoLf)
+    if nextChar == '.':
+      tableKeys.add subkey
+    else:
+      if tableKeys.len != 0:
+        createTableDef(state, tableRef, tableKeys)
+      key = subkey
+      break
+
   if nextChar != '=':
     raise(newTomlError(state,
-                       "key names cannot contain spaces"))
+                       "key names cannot contain character \"" & nextChar & "\""))
 
   nextChar = state.getNextNonWhitespace(skipNoLf)
   # Check that this is a regular value and not an inline table
@@ -872,13 +1104,13 @@ proc createOrAppendTableArrayDef(state: var ParserState,
         # Update the pointer to the current table
         curTableRef = newValue.tableVal
     else:
-      # The element exissts: is it of the right type?
+      # The element exists: is it of the right type?
       let target = curTableRef[tableName]
 
       if lastTableInChain:
         if target.kind != TomlValueKind.Array:
           raise(newTomlError(state, "\"" & tableName &
-                                    " is not an array"))
+                                    "\" is not an array"))
 
         var newValue: TomlValueRef
         new(newValue)
@@ -901,7 +1133,7 @@ proc createTableDef(state: var ParserState,
   var newValue: TomlValueRef
 
   # This starts a new table (e.g. "[table]")
-  for tableName in tableNames:
+  for i, tableName in tableNames:
     if tableName.len == 0:
       raise(newTomlError(state,
                          "empty key not allowed"))
@@ -915,6 +1147,10 @@ proc createTableDef(state: var ParserState,
       # Update the pointer to the current table
       curTableRef = newValue.tableVal
     else:
+      if i == tableNames.high and curTableRef.hasKey(tableName) and
+        curTableRef[tableName].kind == TomlValueKind.Table and
+        curTableRef[tableName].tableVal.len == 0:
+        raise newTomlError(state, "duplicate table key not allowed")
       advanceToNextNestLevel(state, curTableRef, tableName)
 
 proc parseStream*(inputStream: streams.Stream,
@@ -1002,17 +1238,27 @@ proc parseFile*(fileName: string): TomlValueRef =
   let fStream = newFileStream(fileName, fmRead)
   result = parseStream(fStream, fileName)
 
+proc `$`*(val: TomlDate): string =
+  ## Converts the TOML date object into the ISO format read by the parser
+  result = ($val.year).align(4, '0') & "-" & ($val.month).align(2, '0') & "-" &
+    ($val.day).align(2, '0')
+
+proc `$`*(val: TomlTime): string =
+  ## Converts the TOML time object into the ISO format read by the parser
+  result = ($val.hour).align(2, '0') & ":" &
+    ($val.minute).align(2, '0') & ":" & ($val.second).align(2, '0') &
+    (if val.subsecond > 0: ("." & $val.subsecond) else: "")
+
 proc `$`*(val: TomlDateTime): string =
   ## Converts the TOML date-time object into the ISO format read by the parser
-  result = ($val.year).align(4, '0') & "-" & ($val.month).align(2, '0') & "-" &
-    ($val.day).align(2, '0') & "T" & ($val.hour).align(2, '0') & ":" &
-    ($val.minute).align(2, '0') & ":" & ($val.second).align(2, '0') &
-    (if val.subsecond > 0: ("." & $val.subsecond) else: "") &
-    (if not val.shift: "Z" else: (
-      (if val.isShiftPositive: "+" else: "-") &
+  result = $val.date & "T" & $val.time &
+    (if not val.shift: "" else: (
+      (if val.zoneHourShift == 0 and val.zoneMinuteShift == 0: "Z" else: (
+        ((if val.isShiftPositive: "+" else: "-") &
         ($val.zonehourshift).align(2, '0') & ":" &
         ($val.zoneminuteshift).align(2, '0'))
-    )
+      ))
+    ))
 
 proc toTomlString*(value: TomlValueRef): string
 
@@ -1029,6 +1275,10 @@ proc `$`*(val: TomlValueRef): string =
     result = $val.boolVal
   of TomlValueKind.Datetime:
     result = $val.datetimeVal
+  of TomlValueKind.Date:
+    result = $val.dateVal
+  of TomlValueKind.Time:
+    result = $val.timeVal
   of TomlValueKind.String:
     result = $val.stringVal
   of TomlValueKind.Array:
@@ -1051,6 +1301,10 @@ proc `$`*(val: TomlValue): string =
     result = "boolean(" & $val.boolVal & ")"
   of TomlValueKind.Datetime:
     result = "datetime(" & $val.datetimeVal & ")"
+  of TomlValueKind.Date:
+    result = "date(" & $val.dateVal & ")"
+  of TomlValueKind.Time:
+    result = "time(" & $val.timeVal & ")"
   of TomlValueKind.String:
     result = "string(\"" & $val.stringVal & "\")"
   of TomlValueKind.Array:
@@ -1102,8 +1356,12 @@ proc toJson*(value: TomlValueRef): JsonNode =
       %*{"type": "bool", "value": $value.boolVal}
     of TomlValueKind.Datetime:
       %*{"type": "datetime", "value": $value.datetimeVal}
+    of TomlValueKind.Date:
+      %*{"type": "date", "value": $value.dateVal}
+    of TomlValueKind.Time:
+      %*{"type": "time", "value": $value.timeVal}
     of TomlValueKind.String:
-      %*{"type": "string", "value": value.stringVal}
+      %*{"type": "string", "value": newJString(value.stringVal)}
     of TomlValueKind.Array:
       if value.arrayVal.len == 0:
         %*{"type": "array", "value": []}
@@ -1441,19 +1699,30 @@ proc `==`* (a, b: TomlValueRef): bool =
       result = true
     of TomlValueKind.DateTime:
       result =
-        a.dateTimeVal.year == b.dateTimeVal.year and
-        a.dateTimeVal.month == b.dateTimeVal.month and
-        a.dateTimeVal.day == b.dateTimeVal.day and
-        a.dateTimeVal.hour == b.dateTimeVal.hour and
-        a.dateTimeVal.minute == b.dateTimeVal.minute and
-        a.dateTimeVal.second == b.dateTimeVal.second and
-        a.dateTimeVal.subsecond == b.dateTimeVal.subsecond and
+        a.dateTimeVal.date.year == b.dateTimeVal.date.year and
+        a.dateTimeVal.date.month == b.dateTimeVal.date.month and
+        a.dateTimeVal.date.day == b.dateTimeVal.date.day and
+        a.dateTimeVal.time.hour == b.dateTimeVal.time.hour and
+        a.dateTimeVal.time.minute == b.dateTimeVal.time.minute and
+        a.dateTimeVal.time.second == b.dateTimeVal.time.second and
+        a.dateTimeVal.time.subsecond == b.dateTimeVal.time.subsecond and
         a.dateTimeVal.shift == b.dateTimeVal.shift and
         (a.dateTimeVal.shift == true and
           (a.dateTimeVal.isShiftPositive == b.dateTimeVal.isShiftPositive and
           a.dateTimeVal.zoneHourShift == b.dateTimeVal.zoneHourShift and
           a.dateTimeVal.zoneMinuteShift == b.dateTimeVal.zoneMinuteShift)) or
         a.dateTimeVal.shift == false
+    of TomlValueKind.Date:
+      result =
+        a.dateVal.year == b.dateVal.year and
+        a.dateVal.month == b.dateVal.month and
+        a.dateVal.day == b.dateVal.day
+    of TomlValueKind.Time:
+      result =
+        a.timeVal.hour == b.timeVal.hour and
+        a.timeVal.minute == b.timeVal.minute and
+        a.timeVal.second == b.timeVal.second and
+        a.timeVal.subsecond == b.timeVal.subsecond
 
 import hashes
 
@@ -1478,6 +1747,10 @@ proc hash*(n: TomlValueRef): Hash =
     result = Hash(0)
   of TomlValueKind.DateTime:
     result = hash($n.dateTimeVal)
+  of TomlValueKind.Date:
+    result = hash($n.dateVal)
+  of TomlValueKind.Time:
+    result = hash($n.timeVal)
 
 proc hash*(n: OrderedTable[string, TomlValueRef]): Hash =
   for key, val in n:
@@ -1589,489 +1862,7 @@ proc copy*(p: TomlValueRef): TomlValueRef =
       result.arrayVal.add(copy(i))
   of TomlValueKind.DateTime:
     deepCopy(result, p)
-
-when defined(isMainModule):
-  template assertEq(T1: untyped, T2: untyped) =
-    bind instantiationInfo
-    mixin failedAssertImpl
-    when compileOption("assertions"):
-      {.line.}:
-        let val1 = T1
-        let val2 = T2
-        if not (val1 == val2):
-          failedAssertImpl(astToStr(T1) & " != " & astToStr(T2) &
-                           " (" &
-                           $(val1) & " != " & $(val2) & ')')
-
-  # Here come a few tests
-
-  # pow10
-  assert pow10(5.0, 1) == 50.0
-  assert pow10(5.0, 2) == 500.0
-  assert pow10(5.0, 3) == 5000.0
-
-  assert pow10(100.0, -1) == 10.0
-  assert pow10(100.0, -2) == 1.0
-
-  # getNextChar
-
-  block:
-    var s = newParserState(newStringStream("""
-ab c
-de"""))
-    assert(s.line == 1 and s.column == 1)
-
-    assertEq(s.getNextChar(), 'a')
-    assert(s.line == 1 and s.column == 2)
-
-    assertEq(s.getNextChar(), 'b')
-    assert(s.line == 1 and s.column == 3)
-
-    assertEq(s.getNextChar(), ' ')
-    assert(s.line == 1 and s.column == 4)
-
-    assertEq(s.getNextChar(), 'c')
-    assert(s.line == 1 and s.column == 5)
-
-    # Let's add some juice to this boring test...
-    s.pushBackChar('d')
-    assertEq(s.getNextChar(), 'd')
-    assert(s.line == 1 and s.column == 5)
-
-    assertEq(s.getNextChar(), '\l')
-    assert(s.line == 2 and s.column == 1)
-
-    assertEq(s.getNextChar(), 'd')
-    assert(s.line == 2 and s.column == 2)
-
-    assertEq(s.getNextChar(), 'e')
-    assert(s.line == 2 and s.column == 3)
-
-    assertEq(s.getNextChar(), '\0')
-
-  # getNextNonWhitespace
-
-  block:
-    var s = newParserState(newStringStream("ab c\td # Comment\ne\rf"))
-
-    assert(s.line == 1 and s.column == 1)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), 'a')
-    assert(s.line == 1 and s.column == 2)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), 'b')
-    assert(s.line == 1 and s.column == 3)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), 'c')
-    assert(s.line == 1 and s.column == 5)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), 'd')
-    assert(s.line == 1 and s.column == 7)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), '\l')
-    assert(s.line == 2 and s.column == 1)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), 'e')
-    assert(s.line == 2 and s.column == 2)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), 'f')
-    assert(s.line == 2 and s.column == 3)
-
-    assertEq(s.getNextNonWhitespace(skipNoLf), '\0')
-
-
-  block:
-    var s = newParserState(newStringStream("ab c\td # Comment\ne\rf"))
-
-    assert(s.line == 1 and s.column == 1)
-
-    assertEq(s.getNextNonWhitespace(skipLf), 'a')
-    assert(s.line == 1 and s.column == 2)
-
-    assertEq(s.getNextNonWhitespace(skipLf), 'b')
-    assert(s.line == 1 and s.column == 3)
-
-    assertEq(s.getNextNonWhitespace(skipLf), 'c')
-    assert(s.line == 1 and s.column == 5)
-
-    assertEq(s.getNextNonWhitespace(skipLf), 'd')
-    assert(s.line == 1 and s.column == 7)
-
-    assertEq(s.getNextNonWhitespace(skipLf), 'e')
-    assert(s.line == 2 and s.column == 2)
-
-    assertEq(s.getNextNonWhitespace(skipLf), 'f')
-    assert(s.line == 2 and s.column == 3)
-
-    assertEq(s.getNextNonWhitespace(skipLf), '\0')
-
-  # charToInt
-
-  assertEq(charToInt('0', base10), 0)
-  assertEq(charToInt('1', base10), 1)
-  assertEq(charToInt('2', base10), 2)
-  assertEq(charToInt('3', base10), 3)
-  assertEq(charToInt('4', base10), 4)
-  assertEq(charToInt('5', base10), 5)
-  assertEq(charToInt('6', base10), 6)
-  assertEq(charToInt('7', base10), 7)
-  assertEq(charToInt('8', base10), 8)
-  assertEq(charToInt('9', base10), 9)
-
-  assertEq(charToInt('0', base16), 0)
-  assertEq(charToInt('1', base16), 1)
-  assertEq(charToInt('2', base16), 2)
-  assertEq(charToInt('3', base16), 3)
-  assertEq(charToInt('4', base16), 4)
-  assertEq(charToInt('5', base16), 5)
-  assertEq(charToInt('6', base16), 6)
-  assertEq(charToInt('7', base16), 7)
-  assertEq(charToInt('8', base16), 8)
-  assertEq(charToInt('9', base16), 9)
-  assertEq(charToInt('a', base16), 10)
-  assertEq(charToInt('b', base16), 11)
-  assertEq(charToInt('c', base16), 12)
-  assertEq(charToInt('d', base16), 13)
-  assertEq(charToInt('e', base16), 14)
-  assertEq(charToInt('f', base16), 15)
-  assertEq(charToInt('A', base16), 10)
-  assertEq(charToInt('B', base16), 11)
-  assertEq(charToInt('C', base16), 12)
-  assertEq(charToInt('D', base16), 13)
-  assertEq(charToInt('E', base16), 14)
-  assertEq(charToInt('F', base16), 15)
-
-  # parseInt
-
-  block:
-    var s = newParserState(newStringStream("1063"))
-    assertEq(parseInt(s, base10, LeadingChar.DenyZero), 1063)
-
-  block:
-    var s = newParserState(newStringStream("fFa05B"))
-    assertEq(parseInt(s, base16, LeadingChar.DenyZero), 16752731)
-
-  block:
-    var s = newParserState(newStringStream("01063"))
-
-    try:
-      discard parseInt(s, base10, LeadingChar.DenyZero)
-      assert false, "An exception should have been raised here!"
-    except:
-      discard
-
-  block:
-    var s = newParserState(newStringStream("01063"))
-
-    assertEq(parseInt(s, base10, LeadingChar.AllowZero), 1063)
-
-  # parseDecimalPart
-
-  block:
-    var s = newParserState(newStringStream("24802"))
-    # The result should be 0.24802. We check it using integer
-    # arithmetic, instead of using the |x - x_expected| < eps...
-    assertEq(int(100000 * parseDecimalPart(s)), 24802)
-
-
-  # parseDateTimePart
-
-  block:
-    # We do not include the "YYYY-" part, see the implementation
-    # of "praseDateTime" to know why
-    var s = newParserState(newStringStream("12-06T11:34:01+13:24"))
-    var value: TomlDateTime
-    parseDateTimePart(s, value)
-
-    assertEq(value.month, 12)
-    assertEq(value.day, 6)
-    assertEq(value.hour, 11)
-    assertEq(value.minute, 34)
-    assertEq(value.second, 01)
-    assertEq(value.shift, true)
-    assertEq(value.isShiftPositive, true)
-    assertEq(value.zoneHourShift, 13)
-    assertEq(value.zoneMinuteShift, 24)
-
-  block:
-    var s = newParserState(newStringStream("12-06T11:34:01Z"))
-    var value: TomlDateTime
-    parseDateTimePart(s, value)
-
-    assertEq(value.month, 12)
-    assertEq(value.day, 6)
-    assertEq(value.hour, 11)
-    assertEq(value.minute, 34)
-    assertEq(value.second, 01)
-    assertEq(value.shift, false)
-
-  block:
-    # We do not include the "YYYY-" part, see the implementation
-    # of "praseDateTime" to know why
-    var s = newParserState(newStringStream("12-06T11:34:01-13:24"))
-    var value: TomlDateTime
-    parseDateTimePart(s, value)
-
-    assertEq(value.month, 12)
-    assertEq(value.day, 6)
-    assertEq(value.hour, 11)
-    assertEq(value.minute, 34)
-    assertEq(value.second, 01)
-    assertEq(value.shift, true)
-    assertEq(value.isShiftPositive, false)
-    assertEq(value.zoneHourShift, 13)
-    assertEq(value.zoneMinuteShift, 24)
-
-  # parseSingleLineString
-
-  block:
-    var s = newParserState(newStringStream("double string\t\"blahblah"))
-    assert parseSingleLineString(s, StringType.Basic) == "double string\t"
-
-  block:
-    # Escape sequences
-    var s = newParserState(newStringStream('\b' & '\f' & '\l' & '\r' & '\\' &
-      '\"' & '\"'))
-    assert parseSingleLineString(s, StringType.Basic) == "\b\f\l\r\""
-
-  block:
-    # Unicode
-    var s = newParserState(newStringStream(r"\u59\U2126\u1f600"""))
-    assert parseSingleLineString(s, StringType.Basic) == "YΩ😀"
-
-  # parseMultiLineString
-
-  block:
-    var s = newParserState(newStringStream("\ntest\"\"\"blah"))
-    # TODO: add tests here
-    discard parseMultiLineString(s, StringType.Basic)
-
-  # parseArray
-
-  block:
-    var s = newParserState(newStringStream("1, 2, 3, 4]blah"))
-    let arr = parseArray(s)
-
-    assertEq(arr.len(), 4)
-    assert arr[0].kind == TomlValueKind.Int and arr[0].intVal == 1
-    assert arr[1].kind == TomlValueKind.Int and arr[1].intVal == 2
-    assert arr[2].kind == TomlValueKind.Int and arr[2].intVal == 3
-    assert arr[3].kind == TomlValueKind.Int and arr[3].intVal == 4
-
-  block:
-    var s = newParserState(newStringStream("\"a\", \"bb\", \"ccc\"]blah"))
-    let arr = parseArray(s)
-
-    assertEq(arr.len(), 3)
-    assert arr[0].kind == TomlValueKind.String and arr[0].stringVal == "a"
-    assert arr[1].kind == TomlValueKind.String and arr[1].stringVal == "bb"
-    assert arr[2].kind == TomlValueKind.String and arr[2].stringVal == "ccc"
-
-  block:
-    # Array elements of heterogeneous types are forbidden
-    var s = newParserState(newStringStream("1, 2.0, \"foo\"]blah"))
-
-    try:
-      discard parseArray(s) # This should raise an exception
-      assert false # If we reach this, there's something wrong
-    except TomlError:
-      discard # That's expected
-
-  # Arrays of tables (they're tricky to implement!)
-
-  block: # issue #20
-    try:
-      let table = parseString("""
-[general]
-data = 1""") # Notice that there's no newline, with it everything works
-
-      assertEq(table.getTable("general").getInt("data"), 1)
-    except TomlError:
-      assert false # If we reach this, there's something wrong
-
-  try:
-    let table = parseString("""
-alone = 1
-
-[input]
-flags = true
-
-[output]
-int_value = 6
-str_value = "This is a test"
-
-[deeply.nested]
-hello_there = 1.0e+2
-""")
-
-    assertEq(table.len(), 4)
-    assertEq(table["alone"].kind, TomlValueKind.Int)
-    assertEq(table["alone"].intVal, 1)
-
-    block:
-      assertEq(table["input"].kind, TomlValueKind.Table)
-      let inputTable = table["input"].tableVal
-      assertEq(inputTable.len(), 1)
-      assertEq(inputTable["flags"].kind, TomlValueKind.Bool)
-      assertEq(inputTable["flags"].boolVal, true)
-
-    block:
-      assertEq(table["output"].kind, TomlValueKind.Table)
-      let outputTable = table["output"].tableVal
-      assertEq(outputTable.len(), 2)
-      assertEq(outputTable["int_value"].kind, TomlValueKind.Int)
-      assertEq(outputTable["int_value"].intVal, 6)
-      assertEq(outputTable["str_value"].kind, TomlValueKind.String)
-      assertEq(outputTable["str_value"].stringVal, "This is a test")
-
-    block:
-      assertEq(table["deeply"].kind, TomlValueKind.Table)
-      let deeplyTable = table["deeply"].tableVal
-      assertEq(deeplyTable["nested"].kind, TomlValueKind.Table)
-      let nestedTable = deeplyTable["nested"].tableVal
-      assertEq(nestedTable.len(), 1)
-      assertEq(nestedTable["hello_there"].kind, TomlValueKind.Float)
-      assertEq(nestedTable["hello_there"].floatVal, 100.0)
-
-  except TomlError:
-    let loc = (ref TomlError)(getCurrentException()).location
-    echo loc.filename & ":" & $(loc.line) & ":" & $(loc.column) & ":" &
-      getCurrentExceptionMsg()
-
-  let fruitTable = parseString("""
-[[fruit]]
-name = "apple"
-
-[fruit.physical]
-  color = "red"
-  shape = "round"
-
-[[fruit.variety]]
-  name = "red delicious"
-
-[[fruit.variety]]
-  name = "granny smith"
-
-[[fruit]]
-name = "banana"
-
-[[fruit.variety]]
-  name = "plantain"
-""")
-
-  assertEq(fruitTable.len(), 1)
-  assertEq(fruitTable["fruit"].kind, TomlValueKind.Array)
-  assertEq(fruitTable["fruit"].arrayVal[0].kind, TomlValueKind.Table)
-  assertEq(fruitTable["fruit"].arrayVal[0].tableVal.len(), 3)
-  assertEq(fruitTable["fruit"].arrayVal[0].tableVal["name"].kind,
-           TomlValueKind.String)
-  assertEq(fruitTable["fruit"].arrayVal[0].tableVal["name"].stringVal, "apple")
-  assertEq(fruitTable["fruit"].arrayVal[0].tableVal["physical"].kind,
-           TomlValueKind.Table)
-  assertEq(fruitTable["fruit"].arrayVal[0].tableVal["variety"].kind,
-           TomlValueKind.Array)
-
-  block:
-    let varietyTable =
-      fruitTable["fruit"].arrayVal[0].tableVal["variety"].arrayVal
-    assertEq(varietyTable.len(), 2)
-    assertEq(varietyTable[0].kind, TomlValueKind.Table)
-    assertEq(varietyTable[0].tableVal["name"].kind, TomlValueKind.String)
-    assertEq(varietyTable[0].tableVal["name"].stringVal, "red delicious")
-    assertEq(varietyTable[1].kind, TomlValueKind.Table)
-    assertEq(varietyTable[1].tableVal["name"].kind, TomlValueKind.String)
-    assertEq(varietyTable[1].tableVal["name"].stringVal, "granny smith")
-
-  assertEq(fruitTable["fruit"].arrayVal[1].kind, TomlValueKind.Table)
-  assertEq(fruitTable["fruit"].arrayVal[1].tableVal.len(), 2)
-
-  assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].kind,
-           TomlValueKind.String)
-  assertEq(fruitTable["fruit"].arrayVal[1].tableVal["name"].stringVal, "banana")
-  assertEq(fruitTable["fruit"].arrayVal[1].tableVal["variety"].kind,
-           TomlValueKind.Array)
-
-  block:
-    let varietyTable =
-      fruitTable["fruit"].arrayVal[1].tableVal["variety"].arrayVal
-    assertEq(varietyTable.len(), 1)
-    assertEq(varietyTable[0].kind, TomlValueKind.Table)
-    assertEq(varietyTable[0].tableVal["name"].kind, TomlValueKind.String)
-    assertEq(varietyTable[0].tableVal["name"].stringVal, "plantain")
-
-
-  # getValueFromFullAddr
-
-  block:
-    let node = getValueFromFullAddr(fruitTable, "fruit[1].variety[0].name")
-    assertEq(node.kind, TomlValueKind.String)
-    assertEq(node.stringVal, "plantain")
-
-  block:
-    # Wrong index
-    let node = getValueFromFullAddr(fruitTable, "fruit[3]")
-    assertEq(node.kind, TomlValueKind.None)
-
-  block:
-    # Dangling dot
-    let node = getValueFromFullAddr(fruitTable, "fruit[0].")
-    assertEq(node.kind, TomlValueKind.None)
-
-  # getString
-
-  assertEq(fruitTable.getString("fruit[0].name"), "apple")
-  assertEq(fruitTable.getString("fruit[0].physical.shape"), "round")
-
-  try:
-    assertEq(fruitTable.getString("fruit[0].this_does_not_exist"), "")
-    assert false, "We should have never reached this line!"
-  except:
-    discard
-
-  assertEq(fruitTable.getString("fruit[0].color", "yellow"), "yellow")
-
-  # get??Array
-
-  let arrayTable = parseString("""
-empty = []
-intArr = [1, 2, 3, 4, 5]
-floatArr = [10.0, 11.0, 12.0, 13.0]
-boolArr = [false, true]
-stringArr = ["foo", "bar", "baz"]
-dateTimeArr = [1978-02-07T01:02:03Z]
-""")
-
-  template checkGetArrayFunc(keyName: string,
-                             funcName: untyped,
-                             reference: untyped) =
-    let arr = arrayTable.funcName(keyName)
-
-    assertEq(len(arr), len(reference))
-    for idx in countup(low(arr), high(arr)):
-      assertEq(arr[idx], reference[idx])
-
-  assertEq(len(getIntArray(arrayTable, "empty")), 0)
-  assertEq(len(getFloatArray(arrayTable, "empty")), 0)
-  assertEq(len(getBoolArray(arrayTable, "empty")), 0)
-  assertEq(len(getStringArray(arrayTable, "empty")), 0)
-  assertEq(len(getDateTimeArray(arrayTable, "empty")), 0)
-
-  checkGetArrayFunc("intArr", getIntArray, [1, 2, 3, 4, 5])
-  checkGetArrayFunc("floatArr", getFloatArray, [10.0, 11.0, 12.0, 13.0])
-  checkGetArrayFunc("boolArr", getBoolArray, [false, true])
-  checkGetArrayFunc("stringArr", getStringArray, ["foo", "bar", "baz"])
-
-  block:
-    let referenceDate = TomlDateTime(year: 1978, month: 2, day: 7,
-                                     hour: 1, minute: 2, second: 3,
-                                     shift: false)
-
-    let arr = arrayTable.getDateTimeArray("dateTimeArr")
-    assertEq(len(arr), 1)
-    assertEq(arr[0].year, referenceDate.year)
-    assertEq(arr[0].month, referenceDate.month)
-    assertEq(arr[0].day, referenceDate.day)
-    assertEq(arr[0].hour, referenceDate.hour)
-    assertEq(arr[0].minute, referenceDate.minute)
-    assertEq(arr[0].second, referenceDate.second)
-    assertEq(arr[0].shift, referenceDate.shift)
+  of TomlValueKind.Date:
+    deepCopy(result, p)
+  of TomlValueKind.Time:
+    deepCopy(result, p)
