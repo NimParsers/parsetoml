@@ -1281,7 +1281,6 @@ proc add*(obj: TomlValueRef, key: string, val: TomlValueRef) =
 proc `?`*(s: string): TomlValueRef =
   ## Generic constructor for TOML data. Creates a new `TomlValueKind.String TomlValueRef`.
   new(result)
-  if s.isNil: return
   result.kind = TomlValueKind.String
   result.stringVal = s
 
