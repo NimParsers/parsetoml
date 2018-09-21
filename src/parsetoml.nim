@@ -232,12 +232,16 @@ proc parseInt(state: var ParserState,
     firstPos = false
 
   if not negative:
-    result = -result
+    try:
+      result = -result
+    except OverflowError:
+      raise(newTomlError(state,
+                         "integer numbers wider than 64 bits not allowed"))
 
 proc parseDecimalPart(state: var ParserState): float64 =
   var
     nextChar: char
-    invPowerOfTen = 10
+    invPowerOfTen = 10.0
     firstPos = true
     wasUnderscore = false
 
@@ -257,8 +261,9 @@ proc parseDecimalPart(state: var ParserState): float64 =
       state.pushBackChar(nextChar)
       break
 
-    result = result + (int(nextChar) - int('0')) / invPowerOfTen
+    result = result + (int(nextChar) - int('0')).float / invPowerOfTen
     invPowerOfTen *= 10
+
     firstPos = false
 
 proc stringDelimiter(kind: StringType): char {.inline, noSideEffect.} =
@@ -1990,7 +1995,7 @@ de"""))
     # of "parseDateTime" to know why
     var s = newParserState(newStringStream("12-06T11:34:01+13:24"))
     var value: TomlDateTime
-    parseDateTimePart(s, value)
+    assertEq(parseDateTimePart(s, value), true)
 
     assertEq(value.date.month, 12)
     assertEq(value.date.day, 6)
@@ -2005,7 +2010,7 @@ de"""))
   block:
     var s = newParserState(newStringStream("12-06T11:34:01"))
     var value: TomlDateTime
-    parseDateTimePart(s, value)
+    assertEq(parseDateTimePart(s, value), true)
 
     assertEq(value.date.month, 12)
     assertEq(value.date.day, 6)
@@ -2019,7 +2024,7 @@ de"""))
     # of "praseDateTime" to know why
     var s = newParserState(newStringStream("12-06T11:34:01-13:24"))
     var value: TomlDateTime
-    parseDateTimePart(s, value)
+    assertEq(parseDateTimePart(s, value), true)
 
     assertEq(value.date.month, 12)
     assertEq(value.date.day, 6)
