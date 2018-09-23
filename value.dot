@@ -1,0 +1,138 @@
+digraph graphname {
+  newrank=true;
+  graph [splines=spline];
+  {
+    ENDDIGIT [label="DIGIT"];
+    MOREDIGITS [label="DIGIT"];
+    HEXDIGIT [label="HEX DIGIT"];
+    OCTDIGIT [label="OCTAL DIGIT"];
+    BINDIGIT [label="BINARY DIGIT"];
+    HEXUNDER [label="_"];
+    OCTUNDER [label="_"];
+    BINUNDER [label="_"];
+    ENDUNDER [label="_"];
+    MOREUNDER [label="_"];
+    DIGUNDER [label="_"];
+    ENDPM [label="+/-"];
+    PM [label="+/-"];
+    E [label="e/E"];
+    NONNULLPM [label="NON-NULL DIGIT"];
+    NONNULL [label="NON-NULL DIGIT"];
+    NUMNULL [label="0"];
+    HOURS [label="2 x DIGITS"];
+    MINUTES [label="2 x DIGITS"];
+    SECONDS [label="2 x DIGITS"];
+    HMSEP [label=":"];
+    MSSEP [label=":"];
+    SUBSEP [label="."];
+    MONTH [label="2 x DIGITS"];
+    DAY [label="2 x DIGITS"];
+    YMSEP [label="-"];
+    MDSEP [label="-"];
+    TIMESEP [label="T/t/SPACE"];
+    GMINUTES [label="2 x DIGITS"];
+    GSECONDS [label="2 x DIGITS"];
+    GHMSEP [label=":"];
+    GMSSEP [label=":"];
+    GSUBSEP [label="."];
+    GENDDIGIT [label="DIGIT"];
+    ZONESEP [label="+/-"];
+    ZHOURS [label="2 x DIGIT"];
+    ZMINUTES [label="2 x DIGIT"];
+    ZHMSEP [label=":"];
+  }
+  NONNULLPM -> DIGUNDER;
+  NONNULL -> DIGUNDER;
+  ENDDIGIT -> ENDUNDER -> ENDDIGIT;
+  DIGIT -> DIGUNDER -> DIGIT;
+  0 -> ".";
+  0 -> "3 x DIGIT";
+  NONNULL -> "3 x DIGIT";
+  DAY -> TIMESEP;
+  0 -> "1 x DIGIT";
+  0 -> E;
+  NONNULL -> "1 x DIGIT";
+  NONNULL -> DIGIT;
+  subgraph cluster_datetimes {
+    subgraph cluster_localdate {
+      "3 x DIGIT" -> YMSEP -> MONTH -> MDSEP -> DAY;
+      label = "Local date";
+    }
+    subgraph cluster_localtime {
+      "1 x DIGIT" -> HMSEP -> MINUTES -> MSSEP -> SECONDS -> SUBSEP;
+      label = "Local time";
+    }
+    subgraph cluster_fulldate {
+      TIMESEP -> HOURS -> GHMSEP -> GMINUTES -> GMSSEP -> GSECONDS;
+      GSECONDS -> GSUBSEP -> GENDDIGIT;
+      GENDDIGIT -> ZONESEP;
+      GSECONDS -> ZONESEP
+      GENDDIGIT -> Z;
+      GENDDIGIT -> GENDDIGIT;
+      GSECONDS -> Z;
+      ZONESEP -> ZHOURS -> ZHMSEP -> ZMINUTES;
+      label = "DateTime";
+    }
+  }
+  SUBSEP -> ENDDIGIT;
+  "." -> ENDDIGIT;
+  DIGIT -> ".";
+  NUMNULL -> ".";
+  subgraph cluster_floats {
+    "." -> MOREDIGITS;
+    MOREDIGITS -> E
+    E -> ENDPM;
+    MOREDIGITS -> MOREUNDER -> MOREDIGITS;
+    label = "Float";
+  }
+  DIGIT -> E;
+  NUMNULL -> E;
+  E -> ENDDIGIT;
+  DIGIT -> DIGIT;
+  MOREDIGITS -> MOREDIGITS;
+  ENDDIGIT -> ENDDIGIT;
+  0 -> x;
+  0 -> o;
+  0 -> b;
+  subgraph cluster_encodings {
+    x -> HEXDIGIT;
+    o -> OCTDIGIT;
+    b -> BINDIGIT;
+    HEXDIGIT -> HEXDIGIT;
+    OCTDIGIT -> OCTDIGIT;
+    BINDIGIT -> BINDIGIT;
+    OCTDIGIT -> OCTUNDER -> OCTDIGIT;
+    HEXDIGIT -> HEXUNDER -> HEXDIGIT;
+    BINDIGIT -> BINUNDER -> BINDIGIT;
+    label="Encodings";
+    {rank=same; HEXDIGIT OCTDIGIT BINDIGIT}
+  }
+  ENDPM -> ENDDIGIT;
+  PM -> NONNULLPM;
+  PM -> NUMNULL;
+  PM -> inf;
+  PM -> nan;
+  NONNULLPM -> DIGIT;
+  START -> 0;
+  START -> NONNULL;
+  START -> PM;
+  START -> inf;
+  START -> nan;
+  inf -> END;
+  nan -> END;
+  ENDDIGIT -> END;
+  HEXDIGIT -> END;
+  OCTDIGIT -> END;
+  BINDIGIT -> END;
+  SECONDS -> END;
+  DAY -> END;
+  Z -> END;
+  ZMINUTES -> END;
+  0 -> END;
+  NUMNULL -> END;
+  DIGIT -> END [label = "Integer"];
+  GENDDIGIT -> END [label = "Local DateTime"];
+  GSECONDS -> END [label = "Local DateTime"];
+  {rank=same; 0 NONNULLPM NONNULL inf nan NUMNULL}
+  {rank=same; x o b "3 x DIGIT" "1 x DIGIT" "."}
+}

@@ -238,6 +238,17 @@ proc parseInt(state: var ParserState,
       raise(newTomlError(state,
                          "integer numbers wider than 64 bits not allowed"))
 
+proc parseEncoding(state: var ParserState): TomlValueRef =
+  let nextChar = state.getNextChar()
+  case nextChar:
+    of 'b':
+      return TomlValueRef(kind: TomlValueKind.Int, intVal: parseInt(state, base2, LeadingChar.AllowZero))
+    of 'o':
+      return TomlValueRef(kind: TomlValueKind.Int, intVal: parseInt(state, base8, LeadingChar.AllowZero))
+    of 'x':
+      return TomlValueRef(kind: TomlValueKind.Int, intVal: parseInt(state, base16, LeadingChar.AllowZero))
+    else: raise newTomlError(state, "illegal character")
+
 proc parseDecimalPart(state: var ParserState): float64 =
   var
     nextChar: char
@@ -265,6 +276,7 @@ proc parseDecimalPart(state: var ParserState): float64 =
     invPowerOfTen *= 10
 
     firstPos = false
+
 
 proc stringDelimiter(kind: StringType): char {.inline, noSideEffect.} =
   result = (case kind
@@ -641,129 +653,188 @@ proc pow10(x: float64, pow: int64): float64 {.inline.} =
   for idx in countup(1'i64, abs(pow)):
     result *= mulFactor
 
+proc parseDateOrTime(state: var ParserState, digits: int, yearOrHour: int): TomlValueRef =
+  var
+    nextChar: char
+    yoh = yearOrHour
+    d = digits
+  while true:
+    nextChar = state.getNextChar()
+    case nextChar:
+      of ':':
+        if d != 2:
+          raise newTomlError(state, "wrong number of characters for hour")
+        var val: TomlTime
+        val.hour = yoh
+
+        parseTimePart(state, val)
+        return TomlValueRef(kind: TomlValueKind.Time, timeVal: val)
+      of '-':
+        if d != 4:
+          raise newTomlError(state, "wrong number of characters for year")
+        var val: TomlDateTime
+        val.date.year = yoh
+        let fullDate = parseDateTimePart(state, val)
+
+        if fullDate:
+          return TomlValueRef(kind: TomlValueKind.DateTime,
+                                dateTimeVal: val)
+        else:
+          return TomlValueRef(kind: TomlValueKind.Date,
+                                dateVal: val.date)
+      of strutils.Digits:
+        if d == 4:
+          raise newTomlError(state, "leading zero not allowed")
+        try:
+          yoh *= 10
+          yoh += ord(nextChar) - ord('0')
+          d += 1
+        except OverflowError:
+          raise newTomlError(state, "number larger than 64 bits wide")
+        continue
+      of strutils.Whitespace:
+        raise newTomlError(state, "leading zero not allowed")
+      else: raise newTomlError(state, "illegal character")
+    break
+
+proc parseFloat(state: var ParserState, intPart: int, negative: bool): TomlValueRef =
+  var
+    decimalpart = parseDecimalPart(state)
+    nextChar = state.getNextChar()
+    exponent: int64 = 0
+  if nextChar in {'e', 'E'}:
+    exponent = parseInt(state, base10, LeadingChar.AllowZero)
+  else:
+    state.pushBackChar(nextChar)
+
+  let value =
+    if intPart < 0:
+      pow10(float64(intPart) - decimalPart, exponent)
+    else:
+      pow10(float64(intPart) + decimalPart, exponent)
+  return TomlValueRef(kind: TomlValueKind.Float, floatVal: if negative: -value else: value)
+
+proc parseNumOrDate(state: var ParserState): TomlValueRef =
+  type
+    Sign = enum None, Pos, Neg
+  var
+    nextChar: char
+    forcedSign: Sign = None
+
+  while true:
+    nextChar = state.getNextChar()
+    case nextChar:
+      of '0':
+        nextChar = state.getNextChar()
+        if forcedSign == None:
+          if nextChar in {'b', 'x', 'o'}:
+            state.pushBackChar(nextChar)
+            return parseEncoding(state)
+          else:
+            # This must now be a float or a date/time, or a sole 0
+            case nextChar:
+              of '.':
+                return parseFloat(state, 0, false)
+              of strutils.Whitespace:
+                state.pushBackChar(nextChar)
+                return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
+              of strutils.Digits:
+                # This must now be a date/time
+                return parseDateOrTime(state, digits = 2, yearOrHour = ord(nextChar) - ord('0'))
+              else:
+                raise newTomlError(state, "leading zero not allowed")
+        else:
+          # This must now be a float, or a sole 0
+          nextChar = state.getNextChar()
+          case nextChar:
+            of '.':
+              return parseFloat(state, 0, forcedSign == Neg)
+            of strutils.Whitespace:
+              state.pushBackChar(nextChar)
+              return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
+            else:
+              raise newTomlError(state, "leading zero not allowed")
+      of strutils.Digits - {'0'}:
+        # This might be a date/time, or an int or a float
+        var
+          digits = 1
+          curSum = ord(nextChar) - ord('0')
+          wasUnderscore = false
+        while true:
+          nextChar = state.getNextChar()
+          case nextChar:
+            of ':':
+              if digits != 2:
+                raise newTomlError(state, "wrong number of characters for hour")
+              var val: TomlTime
+              val.hour = curSum
+              parseTimePart(state, val)
+              return TomlValueRef(kind: TomlValueKind.Time, timeVal: val)
+            of '-':
+              if digits != 4:
+                raise newTomlError(state, "wrong number of characters for year")
+              var val: TomlDateTime
+              val.date.year = curSum
+              let fullDate = parseDateTimePart(state, val)
+              if fullDate:
+                return TomlValueRef(kind: TomlValueKind.DateTime,
+                                      dateTimeVal: val)
+              else:
+                return TomlValueRef(kind: TomlValueKind.Date,
+                                      dateVal: val.date)
+            of '.':
+              return parseFloat(state, curSum, forcedSign == Neg)
+            of strutils.Digits:
+              try:
+                curSum *= 10
+                curSum += ord(nextChar) - ord('0')
+                digits += 1
+              except OverflowError:
+                raise newTomlError(state, "number larger than 64 bits wide")
+              wasUnderscore = false
+              continue
+            of '_':
+              if wasUnderscore:
+                raise newTomlError(state, "underscores must be surrounded by digits")
+              wasUnderscore = true
+              continue
+            of strutils.Whitespace:
+              state.pushBackChar(nextChar)
+              if wasUnderscore:
+                raise newTomlError(state, "underscores must be surrounded by digits")
+              return TomlValueRef(kind: TomlValueKind.Int, intVal: if forcedSign == Neg: -curSum else: curSum)
+            else: raise newTomlError(state, "illegal character")
+          break
+      of '+', '-':
+        forcedSign = if nextChar == '+': Pos else: Neg
+        continue
+      of 'i':
+        #  Is this "inf"?
+        let oldState = state
+        if state.getNextChar() != 'n' or
+           state.getNextChar() != 'f':
+            raise(newTomlError(oldState, "unknown identifier"))
+        return TomlValueRef(kind: TomlValueKind.Float, floatVal: if forcedSign == Neg: NegInf else: Inf)
+
+      of 'n':
+        #  Is this "nan"?
+        let oldState = state
+        if state.getNextChar() != 'a' or
+           state.getNextChar() != 'n':
+            raise(newTomlError(oldState, "unknown identifier"))
+        return TomlValueRef(kind: TomlValueKind.Float, floatVal: Nan)
+      else:
+        raise newTomlError(state, "illegal character")
+    break
+
 proc parseValue(state: var ParserState): TomlValueRef =
   var nextChar: char
 
   nextChar = state.getNextNonWhitespace(skipNoLf)
   case nextChar
-  of strutils.Digits, '+', '-':
-    let
-      surelyNotDateTime = nextChar in {'+', '-'}
-      negative = nextChar == '-'
+  of strutils.Digits, '+', '-', 'i', 'n':
     state.pushBackChar(nextChar)
-
-    # We can either have an integer, a float or a datetime
-    let
-      wasLine = state.line
-      peekChar = state.getNextChar()
-    state.pushBackChar(peekChar)
-    let
-      intPart = parseInt(state, base10, LeadingChar.AllowZero)
-    if peekChar == '0':
-      if wasLine != state.line:
-        if intPart == 0:
-          result = TomlValueRef(kind: TomlValueKind.Int,
-                                intVal: (if negative and intPart >= 0: -intPart else: intPart))
-          return
-        else:
-          raise(newTomlError(state,
-                             "leading zeroes are not allowed in integers"))
-      else:
-        nextChar = state.getNextChar()
-        state.pushBackChar(nextChar)
-        if nextChar in {'.', 'e', 'E'} and intPart != 0:
-          raise(newTomlError(state,
-                             "leading zeroes are not allowed in integers"))
-
-
-    nextChar = state.getNextChar()
-    case nextChar
-    of 'e', 'E':
-      let exponent = parseInt(state, base10, LeadingChar.AllowZero)
-      let value = pow10(float64(intPart), exponent)
-      result = TomlValueRef(kind: TomlValueKind.Float,
-                            floatVal: (if negative and value >= 0: -value else: value))
-    of '.':
-      nextChar = state.getNextChar()
-      if nextChar notin strutils.Digits:
-        raise(newTomlError(state, "dot not followed by digit in float"))
-      state.pushBackChar(nextChar)
-      let decimalPart = parseDecimalPart(state)
-      nextChar = state.getNextChar()
-      var exponent: int64 = 0
-      if nextChar in {'e', 'E'}:
-        exponent = parseInt(state, base10, LeadingChar.AllowZero)
-      else:
-        state.pushBackChar(nextChar)
-
-      let value =
-        if intPart < 0:
-          pow10(float64(intPart) - decimalPart, exponent)
-        else:
-          pow10(float64(intPart) + decimalPart, exponent)
-      result = TomlValueRef(kind: TomlValueKind.Float,
-                            floatVal: (if negative and value >= 0: -value else: value))
-    of '-':
-      if surelyNotDateTime:
-        raise(newTomlError(state, "unexpected character \"-\""))
-
-      # This might be a datetime object
-      var val: TomlDateTime
-      val.date.year = int(intPart)
-      # We assume a year has 4 digits
-      if val.date.year < 1000 or val.date.year > 9999:
-        raise(newTomlError(state, "invalid year (" & $val.date.year & ")"))
-
-      let fullDate = parseDateTimePart(state, val)
-
-      if fullDate:
-        result = TomlValueRef(kind: TomlValueKind.DateTime,
-                              dateTimeVal: val)
-      else:
-        result = TomlValueRef(kind: TomlValueKind.Date,
-                              dateVal: val.date)
-    of ':':
-      if surelyNotDateTime:
-        raise(newTomlError(state, "unexpected character \":\""))
-
-      var val: TomlTime
-      val.hour = int(intPart)
-
-      parseTimePart(state, val)
-
-      # This might be a time object
-      result = TomlValueRef(kind: TomlValueKind.Time,
-                            timeVal: val)
-    of 'i':
-      #  Is this "inf"?
-      let oldState = state
-      if state.getNextChar() != 'n' or
-         state.getNextChar() != 'f':
-          raise(newTomlError(oldState, "unknown identifier"))
-      result = TomlValueRef(kind: TomlValueKind.Float, floatVal: if negative: NegInf else: Inf)
-
-    of 'n':
-      #  Is this "inf"?
-      let oldState = state
-      if state.getNextChar() != 'a' or
-         state.getNextChar() != 'n':
-          raise(newTomlError(oldState, "unknown identifier"))
-      result = TomlValueRef(kind: TomlValueKind.Float, floatVal: Nan)
-
-    of 'x':
-      result = TomlValueRef(kind: TomlValueKind.Int, intVal: parseInt(state, base16, LeadingChar.AllowZero))
-
-    of 'o':
-      result = TomlValueRef(kind: TomlValueKind.Int, intVal: parseInt(state, base8, LeadingChar.AllowZero))
-
-    of 'b':
-      result = TomlValueRef(kind: TomlValueKind.Int, intVal: parseInt(state, base2, LeadingChar.AllowZero))
-
-    else:
-      state.pushBackChar(nextChar)
-      result = TomlValueRef(kind: TomlValueKind.Int,
-                            intVal: (if negative and intPart >= 0: -intPart else: intPart))
-
+    return parseNumOrDate(state)
   of 't':
     # Is this "true"?
     let oldState = state # Only used for error messages
@@ -782,22 +853,6 @@ proc parseValue(state: var ParserState): TomlValueRef =
        state.getNextChar() != 'e':
         raise(newTomlError(oldState, "unknown identifier"))
     result = TomlValueRef(kind: TomlValueKind.Bool, boolVal: false)
-
-  of 'i':
-    #  Is this "inf"?
-    let oldState = state
-    if state.getNextChar() != 'n' or
-       state.getNextChar() != 'f':
-        raise(newTomlError(oldState, "unknown identifier"))
-    result = TomlValueRef(kind: TomlValueKind.Float, floatVal: Inf)
-
-  of 'n':
-    #  Is this "inf"?
-    let oldState = state
-    if state.getNextChar() != 'a' or
-       state.getNextChar() != 'n':
-        raise(newTomlError(oldState, "unknown identifier"))
-    result = TomlValueRef(kind: TomlValueKind.Float, floatVal: Nan)
 
   of '\"':
     # A basic string (accepts \ escape codes)
