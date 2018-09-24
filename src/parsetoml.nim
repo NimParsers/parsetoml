@@ -270,6 +270,8 @@ proc parseDecimalPart(state: var ParserState): float64 =
         raise(newTomlError(state,
                            "underscore must be surrounded by digit"))
       state.pushBackChar(nextChar)
+      if firstPos:
+        raise newTomlError(state, "decimal part empty")
       break
 
     result = result + (int(nextChar) - int('0')).float / invPowerOfTen
@@ -758,7 +760,7 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
         # This might be a date/time, or an int or a float
         var
           digits = 1
-          curSum = ord(nextChar) - ord('0')
+          curSum = ord('0') - ord(nextChar)
           wasUnderscore = false
         while true:
           nextChar = state.getNextChar()
@@ -774,7 +776,7 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
               if digits != 4:
                 raise newTomlError(state, "wrong number of characters for year")
               var val: TomlDateTime
-              val.date.year = curSum
+              val.date.year = -curSum
               let fullDate = parseDateTimePart(state, val)
               if fullDate:
                 return TomlValueRef(kind: TomlValueKind.DateTime,
@@ -783,11 +785,11 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
                 return TomlValueRef(kind: TomlValueKind.Date,
                                       dateVal: val.date)
             of '.':
-              return parseFloat(state, curSum, forcedSign == Neg)
+              return parseFloat(state, curSum, forcedSign != Neg)
             of strutils.Digits:
               try:
                 curSum *= 10
-                curSum += ord(nextChar) - ord('0')
+                curSum += ord('0') - ord(nextChar)
                 digits += 1
               except OverflowError:
                 raise newTomlError(state, "number larger than 64 bits wide")
@@ -802,8 +804,10 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
               state.pushBackChar(nextChar)
               if wasUnderscore:
                 raise newTomlError(state, "underscores must be surrounded by digits")
-              return TomlValueRef(kind: TomlValueKind.Int, intVal: if forcedSign == Neg: -curSum else: curSum)
-            else: raise newTomlError(state, "illegal character")
+              return TomlValueRef(kind: TomlValueKind.Int, intVal: if forcedSign == Neg: curSum else: -curSum)
+            else:
+              state.pushBackChar(nextChar)
+              return TomlValueRef(kind: TomlValueKind.Int, intVal: if forcedSign == Neg: curSum else: -curSum)
           break
       of '+', '-':
         forcedSign = if nextChar == '+': Pos else: Neg
@@ -824,7 +828,7 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
             raise(newTomlError(oldState, "unknown identifier"))
         return TomlValueRef(kind: TomlValueKind.Float, floatVal: Nan)
       else:
-        raise newTomlError(state, "illegal character")
+        raise newTomlError(state, "illegal character " & escape($nextChar))
     break
 
 proc parseValue(state: var ParserState): TomlValueRef =
@@ -1129,7 +1133,7 @@ proc createTableDef(state: var ParserState,
   var newValue: TomlValueRef
 
   # This starts a new table (e.g. "[table]")
-  for tableName in tableNames:
+  for i, tableName in tableNames:
     if tableName.len == 0:
       raise(newTomlError(state,
                          "empty key not allowed"))
@@ -1143,6 +1147,10 @@ proc createTableDef(state: var ParserState,
       # Update the pointer to the current table
       curTableRef = newValue.tableVal
     else:
+      if i == tableNames.high and curTableRef.hasKey(tableName) and
+        curTableRef[tableName].kind == TomlValueKind.Table and
+        curTableRef[tableName].tableVal.len == 0:
+        raise newTomlError(state, "duplicate table key not allowed")
       advanceToNextNestLevel(state, curTableRef, tableName)
 
 proc parseStream*(inputStream: streams.Stream,
@@ -1353,7 +1361,7 @@ proc toJson*(value: TomlValueRef): JsonNode =
     of TomlValueKind.Time:
       %*{"type": "time", "value": $value.timeVal}
     of TomlValueKind.String:
-      %*{"type": "string", "value": value.stringVal}
+      %*{"type": "string", "value": newJString(value.stringVal)}
     of TomlValueKind.Array:
       if value.arrayVal.len == 0:
         %*{"type": "array", "value": []}
