@@ -8,4 +8,4 @@ test "parseString":
 [input]
 file_name = "test.txt"
 """)
-  check table1["input"]["file_name"] == "test.txt"
+  check table1["input"]["file_name"].getStr() == "test.txt"
