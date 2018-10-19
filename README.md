@@ -16,14 +16,12 @@ Use `nimble` to install it:
 
 ## Documentation
 
-- Full documentation: https://parsetoml.readthedocs.org/en/latest/
-- API documentation: http://nimparsers.github.io/parsetoml/
+http://nimparsers.github.io/parsetoml/
 
 ## Usage
 
 Below are just few snippets of code to show some basic usage of this
-library. Refer to the above documentation links for complete
-details.
+library. Refer to the above linked documentation for complete details.
 
 ### Importing the library
 

@@ -1,3 +1,14 @@
+## :License: MIT
+##
+## Introduction
+## ============
+## This module implements a TOML parser that is compliant with v0.5.0 of its spec.
+##
+## Source
+## ======
+## `Repo link <https://github.com/NimParsers/parsetoml>`_
+##
+
 # Copyright (c) 2015 Maurizio Tomasi and contributors
 #
 # Permission is hereby granted, free of charge, to any person
@@ -19,9 +30,6 @@
 # ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
-# parsetoml - Nim library to parse a TOML file
-# Main site: https://github.com/NimParsers/parsetoml
 
 import math
 import streams
