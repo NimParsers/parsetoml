@@ -1,0 +1,67 @@
+sudo: required
+
+language: c
+
+cache:
+  directories:
+    - nim
+
+env:
+  global:
+    - PROGNAME="$(basename ${TRAVIS_BUILD_DIR})" # /travis/build/NimParsers/parsetoml -> parsetoml
+    - NIMFILE="src/${PROGNAME}.nim"
+    #
+    - NIMREPO="https://github.com/nim-lang/Nim"
+    - NIMVER="$(git ls-remote ${NIMREPO} devel | cut -f 1)"
+    - NIMDIR="${TRAVIS_BUILD_DIR}/nim/${NIMVER}"
+
+install:
+  - echo "NIMDIR = ${NIMDIR}"
+  # After building nim, wipe csources to save on cache space.
+  - "{ [ -f ${NIMDIR}/bin/nim ]; } ||
+      ( rm -rf nim;
+        mkdir -p nim;
+        git clone --single-branch --branch devel --depth=1 ${NIMREPO} ${NIMDIR};
+        cd ${NIMDIR};
+        [ -d csources ] || git clone --depth 1 https://github.com/nim-lang/csources.git;
+        cd csources;
+        sh build.sh;
+        cd ..;
+        ./bin/nim c koch;
+        ./koch boot -d:release;
+        rm -rf csources;
+      )"
+  - "{ [ -f ${NIMDIR}/bin/nimble ]; } ||
+      ( cd ${NIMDIR};
+        ./koch nimble;
+      )"
+  - export PATH="${NIMDIR}/bin:${PATH}"
+  - nim -v
+
+script:
+  # Ensure that you are in repo/build root now.
+  - cd "${TRAVIS_BUILD_DIR}"
+  # Test compilation.
+  - nim c "${NIMFILE}"
+  # Test nimble install.
+  - nimble install --depsOnly --accept
+  - git clone https://github.com/kaushalmodi/nim_config && cp nim_config/config.nims . # Get global config.nims
+  - nim test
+  - nim docs
+
+deploy:
+  provider: pages
+  # local-dir *has* to be a relative path from the repo root.
+  local-dir: "public"
+  skip-cleanup: true
+  github-token: "${GITHUB_OAUTH_TOKEN}"
+  keep-history: false
+  on:
+    branch: master
+
+notifications:
+  email:
+    on_success: never # default: change
+    on_failure: always # default: always
+
+# Ref: https://github.com/kaushalmodi/hello_musl/blob/master/.travis.yml
