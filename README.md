@@ -14,19 +14,24 @@ Use `nimble` to install it:
 
     nimble install parsetoml
 
+## Documentation
+
+- Full documentation: https://parsetoml.readthedocs.org/en/latest/
+- API documentation: http://nimparsers.github.io/parsetoml/
+
 ## Usage
 
-The full documentation is available at
-https://parsetoml.readthedocs.org/en/latest/. Here I just show a few
-snippets of code.
+Below are just few snippets of code to show some basic usage of this
+library. Refer to the above documentation links for complete
+details.
 
-Import the library using:
+### Importing the library
 
 ```nim
 import parsetoml
 ```
 
-There are several functions that can parse TOML content:
+### Parsing TOML content
 
 ```nim
 let table1 = parsetoml.parseString("""
@@ -39,6 +44,8 @@ verbose = true
 let table2 = parsetoml.parseFile(f)
 let table3 = parsetoml.parseFile("test.toml")
 ```
+
+### Using the parsed content
 
 The return value of `parseString` and `parseFile` is a reference to
 the `TomlValue` object, `TomlValueRef`.
@@ -62,6 +69,8 @@ let verboseFlag = table1["output"]["verbose"].getBool()
 # You can specify a default as well
 let input = table1["input"]["file_name"].getStr("some_default.txt")
 ```
+
+### Transforming the parsed date to JSON / Table
 
 For the validation this library needs to output JSON. Therefore it has
 a proc to convert the `TomlValueRef` to JSON nodes.
