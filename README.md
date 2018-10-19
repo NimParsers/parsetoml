@@ -29,7 +29,7 @@ import parsetoml
 There are several functions that can parse TOML content:
 
 ```nim
-let table1 = parsetoml.parseString(""""
+let table1 = parsetoml.parseString("""
 [input]
 file_name = "test.txt"
 
@@ -40,52 +40,74 @@ let table2 = parsetoml.parseFile(f)
 let table3 = parsetoml.parseFile("test.toml")
 ```
 
-The return value of `parseString` and `parseFile` is a `TomlTableRef`
-object. Several functions are available to query for specific fields;
-here is an example:
+The return value of `parseString` and `parseFile` is a reference to
+the `TomlValue` object, `TomlValueRef`.
+
+Several *getter* procs are available to query for specific types of
+fields for an input `TomlValueRef` variable:
+
+- `getStr` : Get the string value.
+- `getInt` : Get the integer value.
+- `getFloat` : Get the float value.
+- `getBool` : Get the bool value.
+- `getElems` : Get a sequence of `TomlValueRef` values.
+- `getTable` : Get a `TomlTableRef` value.
+
+Using the same `table1` variable from the above example:
 
 ```nim
 # Get the value, or fail if it is not found
-let verboseFlag = parsetoml.getBool(table1, "output.verbose")
+let verboseFlag = table1["output"]["verbose"].getBool()
 
 # You can specify a default as well
-let input = parsetoml.getString(table1, "input.file_name", "dummy.txt")
+let input = table1["input"]["file_name"].getStr("some_default.txt")
 ```
 
-For the validation this library needs to output JSON, it therefore has
-a procedure to produce JSON code. This is not just a simple JSON
-object however, it follows the rather verbose specification of the
-validator.
+For the validation this library needs to output JSON. Therefore it has
+a proc to convert the `TomlValueRef` to JSON nodes.
 
 ```nim
-import parsetoml
-import json
-import streams
+import parsetoml, json
 
-let table = parsetoml.parseStream(newFileStream(stdin))
+let table1 = parsetoml.parseString("""
+[input]
+file_name = "test.txt"
 
-echo table.toJson.pretty
-```
-
-If you need to not only read TOML there is also the possibility of
-writing the internal TOML representation out as a string. This is
-still an early implementation and has not been run through the
-validator (it requires JSON input). Therefore it probably contains
-bugs.
-
-```nim
-import parsetoml
-import streams
-
-var table = parsetoml.parseString("""
-[table]
-a = 100
+[output]
+verbose = true
 """)
 
-var a = table.getValueFromFullAddr("table.a")
-a.intVal = 200
+echo table1.toJson.pretty()
+```
 
-echo table.toTomlString
+Above outputs:
+
+```json
+{
+  "input": {
+    "file_name": {
+      "type": "string",
+      "value": "test.txt"
+    }
+  },
+  "output": {
+    "verbose": {
+      "type": "bool",
+      "value": "true"
+    }
+  }
+}
+```
+
+To see the parsed TOML in an alternative Nim AST style indented
+format, use `parsetoml.dump(table1.getTable())` with the above
+example, and you will get:
+
+```
+input = table
+    file_name = string("test.txt")
+output = table
+    verbose = boolean(true)
 ```
 
 ## License

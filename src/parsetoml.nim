@@ -1510,9 +1510,7 @@ proc getBool*(n: TomlValueRef, default: bool = false): bool =
   if n.isNil or n.kind != TomlValueKind.Bool: return default
   else: return n.boolVal
 
-proc getTable*(n: TomlValueRef,
-    default = new(TomlTableRef)):
-        TomlTableRef =
+proc getTable*(n: TomlValueRef, default = new(TomlTableRef)): TomlTableRef =
   ## Retrieves the key, value pairs of a `TomlValueKind.Table TomlValueRef`.
   ##
   ## Returns ``default`` if ``n`` is not a ``TomlValueKind.Table``, or if ``n`` is nil.
