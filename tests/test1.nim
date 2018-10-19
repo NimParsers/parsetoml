@@ -1,7 +1,6 @@
 import macros
 import unittest
 import parsetoml
-import typetraits
 
 test "parseString":
   let table1 = parsetoml.parseString("""
