@@ -1,5 +1,3 @@
-sudo: required
-
 language: c
 
 cache:
@@ -17,24 +15,28 @@ env:
 
 install:
   - echo "NIMDIR = ${NIMDIR}"
-  # After building nim, wipe csources to save on cache space.
-  - "{ [ -f ${NIMDIR}/bin/nim ]; } ||
-      ( rm -rf nim;
-        mkdir -p nim;
-        git clone --single-branch --branch devel --depth=1 ${NIMREPO} ${NIMDIR};
-        cd ${NIMDIR};
-        [ -d csources ] || git clone --depth 1 https://github.com/nim-lang/csources.git;
-        cd csources;
-        sh build.sh;
-        cd ..;
-        ./bin/nim c koch;
-        ./koch boot -d:release;
-        rm -rf csources;
-      )"
-  - "{ [ -f ${NIMDIR}/bin/nimble ]; } ||
-      ( cd ${NIMDIR};
-        ./koch nimble;
-      )"
+  - |
+    if [[ ! -f "${NIMDIR}/bin/nim" ]]
+    then
+      rm -rf nim
+      mkdir -p nim
+      git clone --single-branch --branch devel --depth=1 "${NIMREPO}" "${NIMDIR}"
+      cd "${NIMDIR}" || exit
+      [ -d csources ] || git clone --depth 1 https://github.com/nim-lang/csources.git
+      cd csources
+      sh build.sh
+      cd ..
+      ./bin/nim c koch
+      ./koch boot -d:release
+      # After building nim, wipe csources to save on cache space.
+      rm -rf csources
+    fi
+  - |
+    if [[ ! -f "${NIMDIR}/bin/nimble" ]]
+    then
+      cd "${NIMDIR}" || exit
+      ./koch nimble
+    fi
   - export PATH="${NIMDIR}/bin:${PATH}"
   - nim -v
 
