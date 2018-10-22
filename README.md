@@ -16,7 +16,7 @@ Use `nimble` to install it:
 
 ## Documentation
 
-http://nimparsers.github.io/parsetoml/
+https://nimparsers.github.io/parsetoml/
 
 ## Usage
 
