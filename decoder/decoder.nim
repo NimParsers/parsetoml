@@ -1,7 +1,13 @@
-import "../src/parsetoml"
-import json
-import streams
-import os
+# https://github.com/BurntSushi/toml-test#try-it-out
+# 1. Install the toml-test using:
+#      go get github.com/BurntSushi/toml-test
+# 2. Build this parsetoml based decoder:
+#      nim c -d:release decoder.nim
+# 3. Test it
+#      toml-test decoder
+
+import json, streams, os
+import parsetoml
 
 var
   fs: FileStream
@@ -20,4 +26,3 @@ let table = parsetoml.parseStream(fs)
 fs.close
 
 echo table.toJson.pretty
-
