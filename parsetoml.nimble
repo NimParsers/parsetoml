@@ -15,7 +15,8 @@ from ospaths import expandTilde
 
 task run_toml_test, "Validates parsetoml using toml-test":
   exec("nim c -d:release decoder/decoder.nim")
-  exec("go get github.com/BurntSushi/toml-test") # Set Travis "language:" to "go".
+  exec("echo \"GOPATH = $GOPATH\"")
+  exec("go get -u -v github.com/BurntSushi/toml-test") # Set Travis "language:" to "go".
   let
     tomlTestBin = block:
                     var
