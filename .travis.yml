@@ -49,6 +49,7 @@ script:
   - nimble install --depsOnly --accept
   - git clone https://github.com/kaushalmodi/nim_config && cp nim_config/config.nims . # Get global config.nims
   - nim test
+  - nimble run_toml_test
   - nim docs
 
 deploy:
