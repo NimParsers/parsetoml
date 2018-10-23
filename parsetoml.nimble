@@ -11,17 +11,15 @@ skipDirs      = @["decoder"]
 
 requires "nim >= 0.15.0"
 
-from ospaths import expandTilde
+from ospaths import `/`, expandTilde
 
 task run_toml_test, "Validates parsetoml using toml-test":
   exec("nim c -d:release decoder/decoder.nim")
-  exec("echo \"GOPATH = $GOPATH\"")
-  exec("go get -u -v github.com/BurntSushi/toml-test") # Set Travis "language:" to "go".
+  # Needs "go" executable to be present in PATH.
+  # For Travis, set "language:" to "go".
   let
-    tomlTestBin = block:
-                    var
-                      temp = "~/go.apps/bin/toml-test".expandTilde
-                    if not temp.fileExists():
-                      temp = "~/go/bin/toml-test".expandTilde
-                    temp
-  exec(tomlTestBin & " decoder/decoder")
+    goPath = getEnv("GOPATH")
+    tomlTestRepo = "github.com/BurntSushi/toml-test"
+  doAssert goPath != ""
+  exec("go get -u -v " & tomlTestRepo)
+  exec((goPath / "bin" / "toml-test") & " " & "decoder/decoder")
