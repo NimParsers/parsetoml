@@ -1,4 +1,4 @@
-language: c
+language: go # to install the TOML spec tests using "go get"
 
 cache:
   directories:
