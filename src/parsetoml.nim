@@ -755,7 +755,6 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
                 raise newTomlError(state, "leading zero not allowed")
         else:
           # This must now be a float, or a sole 0
-          nextChar = state.getNextChar()
           case nextChar:
             of '.':
               return parseFloat(state, 0, forcedSign == Neg)
@@ -772,6 +771,8 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
           wasUnderscore = false
         while true:
           nextChar = state.getNextChar()
+          if wasUnderscore and nextChar notin strutils.Digits:
+            raise newTomlError(state, "underscores must be surrounded by digits")
           case nextChar:
             of ':':
               if digits != 2:
@@ -794,6 +795,10 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
                                       dateVal: val.date)
             of '.':
               return parseFloat(state, curSum, forcedSign != Neg)
+            of 'e', 'E':
+              var exponent = parseInt(state, base10, LeadingChar.AllowZero)
+              let value = pow10(float64(curSum), exponent)
+              return TomlValueRef(kind: TomlValueKind.Float, floatVal: if forcedSign != Neg: -value else: value)
             of strutils.Digits:
               try:
                 curSum *= 10
@@ -804,14 +809,10 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
               wasUnderscore = false
               continue
             of '_':
-              if wasUnderscore:
-                raise newTomlError(state, "underscores must be surrounded by digits")
               wasUnderscore = true
               continue
             of strutils.Whitespace:
               state.pushBackChar(nextChar)
-              if wasUnderscore:
-                raise newTomlError(state, "underscores must be surrounded by digits")
               return TomlValueRef(kind: TomlValueKind.Int, intVal: if forcedSign == Neg: curSum else: -curSum)
             else:
               state.pushBackChar(nextChar)
@@ -952,24 +953,26 @@ proc parseTableName(state: var ParserState,
 
 proc parseInlineTable(state: var ParserState, tableRef: var TomlTableRef) =
   while true:
-    var nextChar = state.getNextNonWhitespace(skipLf)
+    var nextChar = state.getNextNonWhitespace(skipNoLf)
     case nextChar
     of '}':
       return
     of ',':
       # Check that this is not a terminating comma (like in
       #  "[b,]")
-      nextChar = state.getNextNonWhitespace(skipLf)
+      nextChar = state.getNextNonWhitespace(skipNoLf)
       if nextChar == '}':
         return
 
       state.pushBackChar(nextChar)
+    of '\n':
+      raise(newTomlError(state, "inline tables cannot contain newlines"))
     else:
       state.pushBackChar(nextChar)
 
       let key = state.parseName()
 
-      nextChar = state.getNextNonWhitespace(skipLf)
+      nextChar = state.getNextNonWhitespace(skipNoLf)
       if nextChar != '=':
         raise(newTomlError(state,
                            "key names cannot contain spaces"))
