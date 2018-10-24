@@ -294,6 +294,10 @@ proc stringDelimiter(kind: StringType): char {.inline, noSideEffect.} =
             of StringType.Literal: '\'')
 
 proc parseUnicode(state: var ParserState): string =
+  let nextChar = state.getNextChar()
+  if nextChar notin strutils.HexDigits:
+    raise(newTomlError(state, "invalid Unicode codepoint, " &
+                       "must be a hexadecimal value"))
   let code = parseInt(state, base16, LeadingChar.AllowZero)
   if code notin 0'i64..0xD7FF and code notin 0xE000'i64..0x10FFFF:
     raise(newTomlError(state, "invalid Unicode codepoint, " &
