@@ -294,11 +294,18 @@ proc stringDelimiter(kind: StringType): char {.inline, noSideEffect.} =
             of StringType.Literal: '\'')
 
 proc parseUnicode(state: var ParserState): string =
-  let nextChar = state.getNextChar()
-  if nextChar notin strutils.HexDigits:
-    raise(newTomlError(state, "invalid Unicode codepoint, " &
-                       "must be a hexadecimal value"))
-  let code = parseInt(state, base16, LeadingChar.AllowZero)
+  let
+    escapeKindChar = state.getNextChar()
+    oldState = (column: state.column, line: state.line)
+    code = parseInt(state, base16, LeadingChar.AllowZero)
+  if state.line != oldState.line:
+    raise newTomlError(state, "invalid Unicode codepoint, can't span lines")
+  if escapeKindChar == 'u' and state.column - 5 != oldState.column:
+    raise newTomlError(state, "invalid Unicode codepoint, 'u' must have " &
+                       "four character value")
+  if escapeKindChar == 'U' and state.column - 9 != oldState.column:
+    raise newTomlError(state, "invalid Unicode codepoint, 'U' must have " &
+                       "eight character value")
   if code notin 0'i64..0xD7FF and code notin 0xE000'i64..0x10FFFF:
     raise(newTomlError(state, "invalid Unicode codepoint, " &
                        "must be a Unicode scalar value"))
@@ -315,7 +322,9 @@ proc parseEscapeChar(state: var ParserState, escape: char): string =
   of '\'': result = "\'"
   of '\"': result = "\""
   of '\\': result = "\\"
-  of 'u', 'U': result = parseUnicode(state)
+  of 'u', 'U':
+    state.pushBackChar(escape)
+    result = parseUnicode(state)
   else:
     raise(newTomlError(state,
                        "unknown escape " &
