@@ -95,6 +95,7 @@ type
     column*: int
     pushback: char
     stream*: streams.Stream
+    curTableRef*: TomlTableRef
 
   TomlError* = object of Exception
     location*: ParserState
@@ -964,7 +965,7 @@ proc parseTableName(state: var ParserState,
       raise(newTomlError(state,
                          "unexpected character " & escape($nextChar)))
 
-proc parseInlineTable(state: var ParserState, tableRef: var TomlTableRef) =
+proc parseInlineTable(state: var ParserState) =
   while true:
     var nextChar = state.getNextNonWhitespace(skipNoLf)
     case nextChar
@@ -989,19 +990,17 @@ proc parseInlineTable(state: var ParserState, tableRef: var TomlTableRef) =
       if nextChar != '=':
         raise(newTomlError(state,
                            "key names cannot contain spaces"))
-      let value = state.parseValue()
-      tableRef[key] = value
+      state.curTableRef[key] = state.parseValue()
 
 proc createTableDef(state: var ParserState,
-                    curTableRef: var TomlTableRef,
                     tableNames: seq[string])
 
-proc parseKeyValuePair(state: var ParserState, inTableRef: var TomlTableRef) =
+proc parseKeyValuePair(state: var ParserState) =
   var
     tableKeys: seq[string]
     key: string
-    tableRef = inTableRef
     nextChar: char
+    oldTableRef = state.curTableRef
 
   while true:
     let subkey = state.parseName()
@@ -1011,7 +1010,7 @@ proc parseKeyValuePair(state: var ParserState, inTableRef: var TomlTableRef) =
       tableKeys.add subkey
     else:
       if tableKeys.len != 0:
-        createTableDef(state, tableRef, tableKeys)
+        createTableDef(state, tableKeys)
       key = subkey
       break
 
@@ -1031,19 +1030,19 @@ proc parseKeyValuePair(state: var ParserState, inTableRef: var TomlTableRef) =
       raise(newTomlError(state,
                          "unexpected character " & escape($nextChar)))
 
-    if tableRef.hasKey(key):
+    if state.curTableRef.hasKey(key):
       raise(newTomlError(state,
                          "duplicate key, \"" & key & "\" already in table"))
-    tableRef[key] = value
+    state.curTableRef[key] = value
   else:
     nextChar = state.getNextNonWhitespace(skipNoLf)
     if nextChar == ',':
       raise(newTomlError(state, "first input table element missing"))
     state.pushBackChar(nextChar)
-    let oldTableRef = tableRef
-    createTableDef(state, tableRef, @[key])
-    parseInlineTable(state, tableRef)
-    tableRef = oldTableRef
+    createTableDef(state, @[key])
+    parseInlineTable(state)
+
+  state.curTableRef = oldTableRef
 
 proc newParserState(s: streams.Stream,
                     fileName: string = ""): ParserState =
@@ -1059,18 +1058,17 @@ proc setArrayVal(val: TomlValueRef, numOfElems: int = 0) =
   val.arrayVal = newSeq[TomlValueRef](numOfElems)
 
 proc advanceToNextNestLevel(state: var ParserState,
-                            curTableRef: var TomlTableRef,
                             tableName: string) =
-  let target = curTableRef[tableName]
+  let target = state.curTableRef[tableName]
   case target.kind
   of TomlValueKind.Table:
-    curTableRef = target.tableVal
+    state.curTableRef = target.tableVal
   of TomlValueKind.Array:
     let arr = target.arrayVal[high(target.arrayVal)]
     if arr.kind != TomlValueKind.Table:
       raise(newTomlError(state, "\"" & tableName &
                          "\" elements are not tables"))
-    curTableRef = arr.tableVal
+    state.curTableRef = arr.tableVal
   else:
     raise(newTomlError(state, "\"" & tableName &
                        "\" is not a table"))
@@ -1094,7 +1092,6 @@ proc advanceToNextNestLevel(state: var ParserState,
 # either cases, curTableRef will refer to the last element of "c".
 
 proc createOrAppendTableArrayDef(state: var ParserState,
-                                 curTableRef: var TomlTableRef,
                                  tableNames: seq[string]) =
   # This is a table array entry (e.g. "[[entry]]")
   for idx, tableName in tableNames:
@@ -1104,7 +1101,7 @@ proc createOrAppendTableArrayDef(state: var ParserState,
     let lastTableInChain = idx == high(tableNames)
 
     var newValue: TomlValueRef
-    if not curTableRef.hasKey(tableName):
+    if not state.curTableRef.hasKey(tableName):
       # If this element does not exist, create it
       new(newValue)
 
@@ -1117,19 +1114,19 @@ proc createOrAppendTableArrayDef(state: var ParserState,
         new(newValue.arrayVal[0])
         setEmptyTableVal(newValue.arrayVal[0])
 
-        curTableRef[tableName] = newValue
-        curTableRef = newValue.arrayVal[0].tableVal
+        state.curTableRef[tableName] = newValue
+        state.curTableRef = newValue.arrayVal[0].tableVal
       else:
         setEmptyTableVal(newValue)
 
         # Add the newly created object to the current table
-        curTableRef[tableName] = newValue
+        state.curTableRef[tableName] = newValue
 
         # Update the pointer to the current table
-        curTableRef = newValue.tableVal
+        state.curTableRef = newValue.tableVal
     else:
       # The element exists: is it of the right type?
-      let target = curTableRef[tableName]
+      let target = state.curTableRef[tableName]
 
       if lastTableInChain:
         if target.kind != TomlValueKind.Array:
@@ -1140,9 +1137,9 @@ proc createOrAppendTableArrayDef(state: var ParserState,
         new(newValue)
         setEmptyTableVal(newValue)
         target.arrayVal.add(newValue)
-        curTableRef = newValue.tableVal
+        state.curTableRef = newValue.tableVal
       else:
-        advanceToNextNestLevel(state, curTableRef, tableName)
+        advanceToNextNestLevel(state, tableName)
 
 # Starting from "curTableRef" (which is usually the root object),
 # traverse the object tree following the names in "tableNames" and
@@ -1152,7 +1149,6 @@ proc createOrAppendTableArrayDef(state: var ParserState,
 # create a new table "c" which is "b"'s children.
 
 proc createTableDef(state: var ParserState,
-                    curTableRef: var TomlTableRef,
                     tableNames: seq[string]) =
   var newValue: TomlValueRef
 
@@ -1161,21 +1157,21 @@ proc createTableDef(state: var ParserState,
     if tableName.len == 0:
       raise(newTomlError(state,
                          "empty key not allowed"))
-    if not curTableRef.hasKey(tableName):
+    if not state.curTableRef.hasKey(tableName):
       new(newValue)
       setEmptyTableVal(newValue)
 
       # Add the newly created object to the current table
-      curTableRef[tableName] = newValue
+      state.curTableRef[tableName] = newValue
 
       # Update the pointer to the current table
-      curTableRef = newValue.tableVal
+      state.curTableRef = newValue.tableVal
     else:
-      if i == tableNames.high and curTableRef.hasKey(tableName) and
-        curTableRef[tableName].kind == TomlValueKind.Table and
-        curTableRef[tableName].tableVal.len == 0:
+      if i == tableNames.high and state.curTableRef.hasKey(tableName) and
+        state.curTableRef[tableName].kind == TomlValueKind.Table and
+        state.curTableRef[tableName].tableVal.len == 0:
         raise newTomlError(state, "duplicate table key not allowed")
-      advanceToNextNestLevel(state, curTableRef, tableName)
+      advanceToNextNestLevel(state, tableName)
 
 proc parseStream*(inputStream: streams.Stream,
                   fileName: string = ""): TomlValueRef =
@@ -1192,7 +1188,7 @@ proc parseStream*(inputStream: streams.Stream,
 
   # This pointer will always point to the table that should get new
   # key/value pairs found in the TOML file during parsing
-  var curTableRef = result.tableVal
+  state.curTableRef = result.tableVal
 
   # Unlike "curTableRef", this pointer never changes: it always
   # points to the uppermost table in the tree
@@ -1206,7 +1202,7 @@ proc parseStream*(inputStream: streams.Stream,
       # A new section/table begins. We'll have to start again
       # from the uppermost level, so let's rewind curTableRef to
       # the root node
-      curTableRef = baseTable
+      state.curTableRef = baseTable
 
       # First, decompose the table name into its part (e.g.,
       # "a.b.c" -> ["a", "b", "c"])
@@ -1228,9 +1224,9 @@ proc parseStream*(inputStream: streams.Stream,
       # reference to the table that gets every next key/value
       # definition.
       if isTableArrayDef:
-        createOrAppendTableArrayDef(state, curTableRef, tableNames)
+        createOrAppendTableArrayDef(state, tableNames)
       else:
-        createTableDef(state, curTableRef, tableNames)
+        createTableDef(state, tableNames)
 
     of '=':
       raise(newTomlError(state, "key name missing"))
@@ -1242,7 +1238,7 @@ proc parseStream*(inputStream: streams.Stream,
     else:
       # Everything else marks the presence of a "key = value" pattern
       state.pushBackChar(nextChar)
-      parseKeyValuePair(state, curTableRef)
+      parseKeyValuePair(state)
 
 proc parseString*(tomlStr: string, fileName: string = ""): TomlValueRef =
   ## Parses a string of TOML formatted data into a TOML table. The optional
