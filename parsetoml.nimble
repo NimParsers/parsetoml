@@ -1,6 +1,6 @@
 # Packages
 
-version       = "0.3.2"
+version       = "0.4.0"
 author        = "Maurizio Tomasi <ziotom78 .at. gmail.com>"
 description   = "Toml parser library for Nim"
 license       = "MIT"
@@ -9,7 +9,7 @@ skipDirs      = @["decoder"]
 
 # Deps
 
-requires "nim >= 0.15.0"
+requires "nim >= 0.18.0"
 
 from ospaths import `/`, expandTilde
 
