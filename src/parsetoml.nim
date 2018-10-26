@@ -439,6 +439,7 @@ proc parseString(state: var ParserState, kind: StringType): string =
 
 # Forward declaration
 proc parseValue(state: var ParserState): TomlValueRef
+proc parseInlineTable(state: var ParserState): TomlValueRef
 
 proc parseArray(state: var ParserState): seq[TomlValueRef] =
   # This procedure assumes that "state" has already consumed the '['
@@ -464,11 +465,13 @@ proc parseArray(state: var ParserState): seq[TomlValueRef] =
 
       state.pushBackChar(nextChar)
     else:
-      state.pushBackChar(nextChar)
-
-      let
-        oldState = state # Saved for error messages
+      let oldState = state # Saved for error messages
+      var newValue: TomlValueRef
+      if nextChar != '{':
+        state.pushBackChar(nextChar)
         newValue = parseValue(state)
+      else:
+        newValue = parseInlineTable(state)
 
       if len(result) > 0:
         # Check that the type of newValue is compatible with the
@@ -965,13 +968,23 @@ proc parseTableName(state: var ParserState,
       raise(newTomlError(state,
                          "unexpected character " & escape($nextChar)))
 
-proc parseInlineTable(state: var ParserState) =
+proc setEmptyTableVal(val: TomlValueRef) =
+  val.kind = TomlValueKind.Table
+  new(val.tableVal)
+  val.tableVal[] = initOrderedTable[string, TomlValueRef]()
+
+proc parseInlineTable(state: var ParserState): TomlValueRef =
+  new(result)
+  setEmptyTableVal(result)
+  var firstComma = true
   while true:
     var nextChar = state.getNextNonWhitespace(skipNoLf)
     case nextChar
     of '}':
       return
     of ',':
+      if firstComma:
+        raise(newTomlError(state, "first inline table element missing"))
       # Check that this is not a terminating comma (like in
       #  "[b,]")
       nextChar = state.getNextNonWhitespace(skipNoLf)
@@ -982,6 +995,7 @@ proc parseInlineTable(state: var ParserState) =
     of '\n':
       raise(newTomlError(state, "inline tables cannot contain newlines"))
     else:
+      firstComma = false
       state.pushBackChar(nextChar)
 
       let key = state.parseName()
@@ -990,7 +1004,7 @@ proc parseInlineTable(state: var ParserState) =
       if nextChar != '=':
         raise(newTomlError(state,
                            "key names cannot contain spaces"))
-      state.curTableRef[key] = state.parseValue()
+      result.tableVal[key] = state.parseValue()
 
 proc createTableDef(state: var ParserState,
                     tableNames: seq[string])
@@ -1035,23 +1049,18 @@ proc parseKeyValuePair(state: var ParserState) =
                          "duplicate key, \"" & key & "\" already in table"))
     state.curTableRef[key] = value
   else:
-    nextChar = state.getNextNonWhitespace(skipNoLf)
-    if nextChar == ',':
-      raise(newTomlError(state, "first input table element missing"))
-    state.pushBackChar(nextChar)
-    createTableDef(state, @[key])
-    parseInlineTable(state)
+    #createTableDef(state, @[key])
+    if key.len == 0:
+      raise newTomlError(state, "empty key not allowed")
+    if state.curTableRef.hasKey(key):
+      raise newTomlError(state, "duplicate table key not allowed")
+    state.curTableRef[key] = parseInlineTable(state)
 
   state.curTableRef = oldTableRef
 
 proc newParserState(s: streams.Stream,
                     fileName: string = ""): ParserState =
   result = ParserState(fileName: fileName, line: 1, column: 1, stream: s)
-
-proc setEmptyTableVal(val: TomlValueRef) =
-  val.kind = TomlValueKind.Table
-  new(val.tableVal)
-  val.tableVal[] = initOrderedTable[string, TomlValueRef]()
 
 proc setArrayVal(val: TomlValueRef, numOfElems: int = 0) =
   val.kind = TomlValueKind.Array
