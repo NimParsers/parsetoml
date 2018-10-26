@@ -482,14 +482,6 @@ proc parseArray(state: var ParserState): seq[TomlValueRef] =
 
       result.add(newValue)
 
-proc parseIntAndCheckBounds(state: var ParserState,
-                            minVal: int,
-                            maxVal: int,
-                            msg: string): int =
-  result = int(parseInt(state, base10, LeadingChar.AllowZero))
-  if result < minVal or result > maxVal:
-    raise(newTomlError(state, msg & " (" & $result & ")"))
-
 proc parseStrictNum(state: var ParserState,
                     minVal: int,
                     maxVal: int,
@@ -665,20 +657,6 @@ proc parseDateTimePart(state: var ParserState,
         dateTime.shift = false
 
     return true
-
-proc pow10(x: float64, pow: int64): float64 {.inline.} =
-  if pow == 0:
-    result = x
-    return
-
-  let mulFactor = if pow < 0:
-                    0.1'f64
-                  else:
-                    10.0'f64
-
-  result = x
-  for idx in countup(1'i64, abs(pow)):
-    result *= mulFactor
 
 proc parseDateOrTime(state: var ParserState, digits: int, yearOrHour: int): TomlValueRef =
   var
@@ -1459,11 +1437,6 @@ proc newTString*(s: string): TomlValueRef =
   new(result)
   result.kind = TomlValueKind.String
   result.stringVal = s
-
-proc newTStringMove(s: string): TomlValueRef =
-  new(result)
-  result.kind = TomlValueKind.String
-  shallowCopy(result.stringVal, s)
 
 proc newTInt*(n: int64): TomlValueRef =
   ## Creates a new `TomlValueKind.Int TomlValueRef`.
