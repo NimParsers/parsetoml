@@ -736,9 +736,9 @@ proc parseFloat(state: var ParserState, intPart: int, negative: bool): TomlValue
 
   let value =
     if intPart < 0:
-      pow10(float64(intPart) - decimalPart, exponent)
+      pow(10.0, exponent.float64) * (float64(intPart) - decimalPart)
     else:
-      pow10(float64(intPart) + decimalPart, exponent)
+      pow(10.0, exponent.float64) * (float64(intPart) + decimalPart)
   return TomlValueRef(kind: TomlValueKind.Float, floatVal: if negative: -value else: value)
 
 proc parseNumOrDate(state: var ParserState): TomlValueRef =
@@ -814,7 +814,7 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
               return parseFloat(state, curSum, forcedSign != Neg)
             of 'e', 'E':
               var exponent = parseInt(state, base10, LeadingChar.AllowZero)
-              let value = pow10(float64(curSum), exponent)
+              let value = pow(10.0, exponent.float64) * float64(curSum)
               return TomlValueRef(kind: TomlValueKind.Float, floatVal: if forcedSign != Neg: -value else: value)
             of strutils.Digits:
               try:
