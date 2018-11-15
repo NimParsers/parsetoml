@@ -12,6 +12,7 @@ some_float = 1.23
 some_bool = true
 some_string_array = ["abc", "def"]
 some_int_array = [123, 456]
+zero_int_array = [0, 1]
 
 [input]
 file_name = "test.txt"
@@ -37,6 +38,7 @@ file_name = "test.txt"
     check:
       foo["some_string_array"].getElems().mapIt(it.getStr()) == @["abc", "def"]
       foo["some_int_array"].getElems().mapIt(it.getInt()) == @[123, 456]
+      foo["zero_int_array"].getElems().mapIt(it.getInt()) == @[0, 1]
 
   test "TOML Table/JSON":
     let
