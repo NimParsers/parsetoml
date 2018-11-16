@@ -740,27 +740,20 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
             case nextChar:
               of '.':
                 return parseFloat(state, 0, false)
-              of ',':
-                # the case of a sole 0 in an array like [0, 1]
-                return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
-              of strutils.Whitespace:
-                state.pushBackChar(nextChar)
-                return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
               of strutils.Digits:
                 # This must now be a date/time
                 return parseDateOrTime(state, digits = 2, yearOrHour = ord(nextChar) - ord('0'))
               else:
-                raise newTomlError(state, "leading zero not allowed")
+                # else is a sole 0
+                return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
         else:
           # This must now be a float, or a sole 0
           case nextChar:
             of '.':
               return parseFloat(state, 0, forcedSign == Neg)
-            of strutils.Whitespace:
-              state.pushBackChar(nextChar)
-              return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
             else:
-              raise newTomlError(state, "leading zero not allowed")
+              # else is a sole 0
+              return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
       of strutils.Digits - {'0'}:
         # This might be a date/time, or an int or a float
         var
