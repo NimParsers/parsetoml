@@ -740,6 +740,9 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
             case nextChar:
               of '.':
                 return parseFloat(state, 0, false)
+              of strutils.Whitespace:
+                state.pushBackChar(nextChar)
+                return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
               of strutils.Digits:
                 # This must now be a date/time
                 return parseDateOrTime(state, digits = 2, yearOrHour = ord(nextChar) - ord('0'))
@@ -751,6 +754,9 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
           case nextChar:
             of '.':
               return parseFloat(state, 0, forcedSign == Neg)
+            of strutils.Whitespace:
+              state.pushBackChar(nextChar)
+              return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
             else:
               # else is a sole 0
               return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
