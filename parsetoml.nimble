@@ -1,6 +1,6 @@
 # Packages
 
-version       = "0.4.0"
+version       = "0.4.1"
 author        = "Maurizio Tomasi <ziotom78 .at. gmail.com>"
 description   = "Toml parser library for Nim"
 license       = "MIT"

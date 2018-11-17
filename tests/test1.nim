@@ -12,6 +12,11 @@ some_float = 1.23
 some_bool = true
 some_string_array = ["abc", "def"]
 some_int_array = [123, 456]
+zero_int_array = [0, 1]
+p_zero_array = [+0, 1]
+m_zero_array = [-0, 1]
+p_zero_float_array = [+0.0, 1.0]
+m_zero_float_array = [-0.0, 1.0]
 
 [input]
 file_name = "test.txt"
@@ -37,6 +42,11 @@ file_name = "test.txt"
     check:
       foo["some_string_array"].getElems().mapIt(it.getStr()) == @["abc", "def"]
       foo["some_int_array"].getElems().mapIt(it.getInt()) == @[123, 456]
+      foo["zero_int_array"].getElems().mapIt(it.getInt()) == @[0, 1]
+      foo["p_zero_array"].getElems().mapIt(it.getInt()) == @[0, 1]
+      foo["m_zero_array"].getElems().mapIt(it.getInt()) == @[0, 1]
+      foo["p_zero_float_array"].getElems().mapIt(it.getFloat()) == @[0'f64, 1]
+      foo["m_zero_float_array"].getElems().mapIt(it.getFloat()) == @[0'f64, 1]
 
   test "TOML Table/JSON":
     let
