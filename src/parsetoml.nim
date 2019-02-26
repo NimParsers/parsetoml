@@ -438,8 +438,8 @@ proc parseString(state: var ParserState, kind: StringType): string =
     return parseSingleLineString(state, kind)
 
 # Forward declaration
-proc parseValue(state: var ParserState): TomlValueRef
-proc parseInlineTable(state: var ParserState): TomlValueRef
+proc parseValue(state: var ParserState): TomlValueRef {.gcsafe.}
+proc parseInlineTable(state: var ParserState): TomlValueRef {.gcsafe.}
 
 proc parseArray(state: var ParserState): seq[TomlValueRef] =
   # This procedure assumes that "state" has already consumed the '['
