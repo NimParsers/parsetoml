@@ -39,6 +39,8 @@ import unicode
 export tables
 
 type
+  Sign* = enum None, Pos, Neg
+
   TomlValueKind* {.pure.} = enum
     None
     Int,
@@ -80,7 +82,9 @@ type
     case kind*: TomlValueKind
     of TomlValueKind.None: nil
     of TomlValueKind.Int: intVal*: int64
-    of TomlValueKind.Float: floatVal*: float64
+    of TomlValueKind.Float:
+      floatVal*: float64
+      forcedSign*: Sign
     of TomlValueKind.Bool: boolVal*: bool
     of TomlValueKind.Datetime: dateTimeVal*: TomlDateTime
     of TomlValueKind.Date: dateVal*: TomlDate
@@ -350,6 +354,9 @@ proc parseSingleLineString(state: var ParserState, kind: StringType): string =
     if nextChar == '\0':
       raise(newTomlError(state, "unterminated string"))
 
+    if ord(nextChar) in {16, 31, 127}:
+      raise(newTomlError(state, "invalid character in string, ord: " & $ord(nextChar)))
+
     if nextChar == '\\' and kind == StringType.Basic:
       nextChar = state.getNextChar()
       result.add(state.parseEscapeChar(nextChar))
@@ -399,7 +406,7 @@ proc parseMultiLineString(state: var ParserState, kind: StringType): string =
     if nextChar == '\\' and kind == StringType.Basic:
       # This can either be an escape sequence or a end-of-line char
       nextChar = state.getNextChar()
-      if nextChar in {'\l', '\r'}:
+      if nextChar in {'\l', '\r', ' '}:
         # We're at the end of a line: skip everything till the
         # next non-whitespace character
         while nextChar in {'\l', '\r', ' ', '\t'}:
@@ -412,6 +419,12 @@ proc parseMultiLineString(state: var ParserState, kind: StringType): string =
         #nextChar = state.getNextChar()
         result.add(state.parseEscapeChar(nextChar))
         continue
+
+    if nextChar == '\0':
+      raise(newTomlError(state, "unterminated string"))
+
+    if ord(nextChar) in {16, 31, 127}:
+      raise(newTomlError(state, "invalid character in string, ord: " & $ord(nextChar)))
 
     result.add(nextChar)
     isFirstChar = false
@@ -661,7 +674,8 @@ proc parseDateTimePart(state: var ParserState,
       if curLine == state.line:
         raise(newTomlError(state, "unexpected character " & escape($nextChar) &
                            " instead of the time zone"))
-      else: discard # shift is automatically initialized to false
+      else: # shift is automatically initialized to false
+        state.pushBackChar(nextChar)
 
     return true
 
@@ -709,7 +723,7 @@ proc parseDateOrTime(state: var ParserState, digits: int, yearOrHour: int): Toml
       else: raise newTomlError(state, "illegal character")
     break
 
-proc parseFloat(state: var ParserState, intPart: int, negative: bool): TomlValueRef =
+proc parseFloat(state: var ParserState, intPart: int, forcedSign: Sign): TomlValueRef =
   var
     decimalpart = parseDecimalPart(state)
     nextChar = state.getNextChar()
@@ -720,15 +734,13 @@ proc parseFloat(state: var ParserState, intPart: int, negative: bool): TomlValue
     state.pushBackChar(nextChar)
 
   let value =
-    if intPart < 0:
+    if intPart <= 0:
       pow(10.0, exponent.float64) * (float64(intPart) - decimalPart)
     else:
       pow(10.0, exponent.float64) * (float64(intPart) + decimalPart)
-  return TomlValueRef(kind: TomlValueKind.Float, floatVal: if negative: -value else: value)
+  return TomlValueRef(kind: TomlValueKind.Float, floatVal: if forcedSign != Neg: -value else: value, forcedSign: forcedSign)
 
 proc parseNumOrDate(state: var ParserState): TomlValueRef =
-  type
-    Sign = enum None, Pos, Neg
   var
     nextChar: char
     forcedSign: Sign = None
@@ -746,7 +758,7 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
             # This must now be a float or a date/time, or a sole 0
             case nextChar:
               of '.':
-                return parseFloat(state, 0, false)
+                return parseFloat(state, 0, forcedSign)
               of strutils.Whitespace:
                 state.pushBackChar(nextChar)
                 return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
@@ -760,7 +772,7 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
           # This must now be a float, or a sole 0
           case nextChar:
             of '.':
-              return parseFloat(state, 0, forcedSign == Neg)
+              return parseFloat(state, 0, forcedSign)
             of strutils.Whitespace:
               state.pushBackChar(nextChar)
               return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
@@ -782,7 +794,7 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
               if digits != 2:
                 raise newTomlError(state, "wrong number of characters for hour")
               var val: TomlTime
-              val.hour = curSum
+              val.hour = -curSum
               parseTimePart(state, val)
               return TomlValueRef(kind: TomlValueKind.Time, timeVal: val)
             of '-':
@@ -798,7 +810,7 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
                 return TomlValueRef(kind: TomlValueKind.Date,
                                       dateVal: val.date)
             of '.':
-              return parseFloat(state, curSum, forcedSign != Neg)
+              return parseFloat(state, curSum, forcedSign)
             of 'e', 'E':
               var exponent = parseInt(state, base10, LeadingChar.AllowZero)
               let value = pow(10.0, exponent.float64) * float64(curSum)
@@ -817,10 +829,10 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
               continue
             of strutils.Whitespace:
               state.pushBackChar(nextChar)
-              return TomlValueRef(kind: TomlValueKind.Int, intVal: if forcedSign == Neg: curSum else: -curSum)
+              return TomlValueRef(kind: TomlValueKind.Int, intVal: if forcedSign != Neg: -curSum else: curSum)
             else:
               state.pushBackChar(nextChar)
-              return TomlValueRef(kind: TomlValueKind.Int, intVal: if forcedSign == Neg: curSum else: -curSum)
+              return TomlValueRef(kind: TomlValueKind.Int, intVal: if forcedSign != Neg: -curSum else: curSum)
           break
       of '+', '-':
         forcedSign = if nextChar == '+': Pos else: Neg
@@ -831,7 +843,7 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
         if state.getNextChar() != 'n' or
            state.getNextChar() != 'f':
             raise(newTomlError(oldState, "unknown identifier"))
-        return TomlValueRef(kind: TomlValueKind.Float, floatVal: if forcedSign == Neg: NegInf else: Inf)
+        return TomlValueRef(kind: TomlValueKind.Float, floatVal: if forcedSign == Neg: NegInf else: Inf, forcedSign: forcedSign)
 
       of 'n':
         #  Is this "nan"?
@@ -839,7 +851,7 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
         if state.getNextChar() != 'a' or
            state.getNextChar() != 'n':
             raise(newTomlError(oldState, "unknown identifier"))
-        return TomlValueRef(kind: TomlValueKind.Float, floatVal: Nan)
+        return TomlValueRef(kind: TomlValueKind.Float, floatVal: Nan, forcedSign: forcedSign)
       else:
         raise newTomlError(state, "illegal character " & escape($nextChar))
     break
@@ -983,22 +995,31 @@ proc parseInlineTable(state: var ParserState): TomlValueRef =
     else:
       firstComma = false
       state.pushBackChar(nextChar)
-
-      let key = state.parseName()
+      var key = state.parseName()
 
       nextChar = state.getNextNonWhitespace(skipNoLf)
+      var curTable = result.tableVal
+      while nextChar == '.':
+        var deepestTable = new(TomlTableRef)
+        deepestTable[] = initOrderedTable[string, TomlValueRef]()
+        curTable[key] = TomlValueRef(kind: TomlValueKind.Table, tableVal: deepestTable)
+        curTable = deepestTable
+        key = state.parseName()
+        nextChar = state.getNextNonWhitespace(skipNoLf)
+
       if nextChar != '=':
         raise(newTomlError(state,
                            "key names cannot contain spaces"))
       nextChar = state.getNextNonWhitespace(skipNoLf)
       if nextChar == '{':
-        result.tableVal[key] = state.parseInlineTable()
+        curTable[key] = state.parseInlineTable()
       else:
         state.pushBackChar(nextChar)
-        result.tableVal[key] = state.parseValue()
+        curTable[key] = state.parseValue()
 
 proc createTableDef(state: var ParserState,
-                    tableNames: seq[string])
+                    tableNames: seq[string],
+                    dotted = false)
 
 proc parseKeyValuePair(state: var ParserState) =
   var
@@ -1015,7 +1036,7 @@ proc parseKeyValuePair(state: var ParserState) =
       tableKeys.add subkey
     else:
       if tableKeys.len != 0:
-        createTableDef(state, tableKeys)
+        createTableDef(state, tableKeys, dotted = true)
       key = subkey
       break
 
@@ -1149,7 +1170,8 @@ proc createOrAppendTableArrayDef(state: var ParserState,
 # create a new table "c" which is "b"'s children.
 
 proc createTableDef(state: var ParserState,
-                    tableNames: seq[string]) =
+                    tableNames: seq[string],
+                    dotted = false) =
   var newValue: TomlValueRef
 
   # This starts a new table (e.g. "[table]")
@@ -1168,9 +1190,13 @@ proc createTableDef(state: var ParserState,
       state.curTableRef = newValue.tableVal
     else:
       if i == tableNames.high and state.curTableRef.hasKey(tableName) and
-        state.curTableRef[tableName].kind == TomlValueKind.Table and
-        state.curTableRef[tableName].tableVal.len == 0:
-        raise newTomlError(state, "duplicate table key not allowed")
+        state.curTableRef[tableName].kind == TomlValueKind.Table:
+        if state.curTableRef[tableName].tableVal.len == 0:
+          raise newTomlError(state, "duplicate table key not allowed")
+        elif not dotted:
+          for value in state.curTableRef[tableName].tableVal.values:
+            if value.kind != TomlValueKind.Table:
+              raise newTomlError(state, "duplicate table key not allowed")
       advanceToNextNestLevel(state, tableName)
 
 proc parseStream*(inputStream: streams.Stream,
@@ -1371,11 +1397,20 @@ proc toJson*(value: TomlValueRef): JsonNode =
     of TomlValueKind.Int:
       %*{"type": "integer", "value": $value.intVal}
     of TomlValueKind.Float:
-      %*{"type": "float", "value": $value.floatVal}
+      if classify(value.floatVal) == fcNan:
+        if value.forcedSign != Pos:
+          %*{"type": "float", "value": $value.floatVal}
+        else:
+          %*{"type": "float", "value": "+" & $value.floatVal}
+      else:
+        %*{"type": "float", "value": $value.floatVal}
     of TomlValueKind.Bool:
       %*{"type": "bool", "value": $value.boolVal}
     of TomlValueKind.Datetime:
-      %*{"type": "datetime", "value": $value.datetimeVal}
+      if value.datetimeVal.shift == false:
+        %*{"type": "datetime-local", "value": $value.datetimeVal}
+      else:
+        %*{"type": "datetime", "value": $value.datetimeVal}
     of TomlValueKind.Date:
       %*{"type": "date", "value": $value.dateVal}
     of TomlValueKind.Time:
@@ -1384,11 +1419,17 @@ proc toJson*(value: TomlValueRef): JsonNode =
       %*{"type": "string", "value": newJString(value.stringVal)}
     of TomlValueKind.Array:
       if value.arrayVal.len == 0:
-        %*{"type": "array", "value": []}
+        when defined(newtestsuite):
+          %[]
+        else:
+          %*{"type": "array", "value": []}
       elif value.arrayVal[0].kind == TomlValueKind.Table:
         %value.arrayVal.map(toJson)
       else:
-        %*{"type": "array", "value": value.arrayVal.map(toJson)}
+        when defined(newtestsuite):
+          %*value.arrayVal.map(toJson)
+        else:
+          %*{"type": "array", "value": value.arrayVal.map(toJson)}
     of TomlValueKind.Table:
       value.tableVal.toJson
     of TomlValueKind.None:
