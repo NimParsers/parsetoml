@@ -885,7 +885,6 @@ proc parseValue(state: var ParserState): TomlValueRef =
     # An array
     result = TomlValueRef(kind: TomlValueKind.Array,
                           arrayVal: parseArray(state))
-
   else:
     raise(newTomlError(state,
                        "unexpected character " & escape($nextChar)))
@@ -991,7 +990,12 @@ proc parseInlineTable(state: var ParserState): TomlValueRef =
       if nextChar != '=':
         raise(newTomlError(state,
                            "key names cannot contain spaces"))
-      result.tableVal[key] = state.parseValue()
+      nextChar = state.getNextNonWhitespace(skipNoLf)
+      if nextChar == '{':
+        result.tableVal[key] = state.parseInlineTable()
+      else:
+        state.pushBackChar(nextChar)
+        result.tableVal[key] = state.parseValue()
 
 proc createTableDef(state: var ParserState,
                     tableNames: seq[string])
