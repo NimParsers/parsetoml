@@ -628,13 +628,21 @@ proc parseDateTimePart(state: var ParserState,
     nextChar = state.getNextChar()
     case nextChar
     of 'z', 'Z':
-      dateTime.shift = true
-      dateTime.isShiftPositive = true
-      dateTime.zoneHourShift = 0
-      dateTime.zoneMinuteShift = 0
+      dateTime = TomlDateTime(
+        time: dateTime.time,
+        date: dateTime.date,
+        shift: true,
+        isShiftPositive: true,
+        zoneHourShift: 0,
+        zoneMinuteShift: 0
+      )
     of '+', '-':
-      dateTime.shift = true
-      dateTime.isShiftPositive = (nextChar == '+')
+      dateTime = TomlDateTime(
+        time: dateTime.time,
+        date: dateTime.date,
+        shift: true,
+        isShiftPositive: (nextChar == '+')
+      )
       dateTime.zoneHourShift =
         parseStrictNum(state, minVal = 0, maxVal = 23, count = 2,
                                "number out of range for shift hours")
@@ -653,8 +661,7 @@ proc parseDateTimePart(state: var ParserState,
       if curLine == state.line:
         raise(newTomlError(state, "unexpected character " & escape($nextChar) &
                            " instead of the time zone"))
-      else:
-        dateTime.shift = false
+      else: discard # shift is automatically initialized to false
 
     return true
 
@@ -1042,8 +1049,8 @@ proc newParserState(s: streams.Stream,
                     fileName: string = ""): ParserState =
   result = ParserState(fileName: fileName, line: 1, column: 1, stream: s)
 
-proc setArrayVal(val: TomlValueRef, numOfElems: int = 0) =
-  val.kind = TomlValueKind.Array
+proc setArrayVal(val: var TomlValueRef, numOfElems: int = 0) =
+  val = TomlValueRef(kind: TomlValueKind.Array)
   val.arrayVal = newSeq[TomlValueRef](numOfElems)
 
 proc advanceToNextNestLevel(state: var ParserState,
@@ -1436,45 +1443,33 @@ proc toTomlString*(value: TomlValueRef): string =
 
 proc newTString*(s: string): TomlValueRef =
   ## Creates a new `TomlValueKind.String TomlValueRef`.
-  new(result)
-  result.kind = TomlValueKind.String
-  result.stringVal = s
+  TomlValueRef(kind: TomlValueKind.String, stringVal: s)
 
 proc newTInt*(n: int64): TomlValueRef =
   ## Creates a new `TomlValueKind.Int TomlValueRef`.
-  new(result)
-  result.kind = TomlValueKind.Int
-  result.intVal  = n
+  TomlValueRef(kind: TomlValueKind.Int, intVal: n)
 
 proc newTFloat*(n: float): TomlValueRef =
   ## Creates a new `TomlValueKind.Float TomlValueRef`.
-  new(result)
-  result.kind = TomlValueKind.Float
-  result.floatVal  = n
+  TomlValueRef(kind: TomlValueKind.Float, floatVal: n)
 
 proc newTBool*(b: bool): TomlValueRef =
   ## Creates a new `TomlValueKind.Bool TomlValueRef`.
-  new(result)
-  result.kind = TomlValueKind.Bool
-  result.boolVal = b
+  TomlValueRef(kind: TomlValueKind.Bool, boolVal: b)
 
 proc newTNull*(): TomlValueRef =
   ## Creates a new `JNull TomlValueRef`.
-  new(result)
-  result.kind = TomlValueKind.None
+  TomlValueRef(kind: TomlValueKind.None)
 
 proc newTTable*(): TomlValueRef =
   ## Creates a new `TomlValueKind.Table TomlValueRef`
-  new(result)
-  result.kind = TomlValueKind.Table
+  result = TomlValueRef(kind: TomlValueKind.Table)
   new(result.tableVal)
   result.tableVal[] = initOrderedTable[string, TomlValueRef](4)
 
 proc newTArray*(): TomlValueRef =
   ## Creates a new `TomlValueKind.Array TomlValueRef`
-  new(result)
-  result.kind = TomlValueKind.Array
-  result.arrayVal = @[]
+  TomlValueRef(kind: TomlValueKind.Array, arrayVal: @[])
 
 proc getStr*(n: TomlValueRef, default: string = ""): string =
   ## Retrieves the string value of a `TomlValueKind.String TomlValueRef`.
@@ -1540,27 +1535,19 @@ proc add*(obj: TomlValueRef, key: string, val: TomlValueRef) =
 
 proc `?`*(s: string): TomlValueRef =
   ## Generic constructor for TOML data. Creates a new `TomlValueKind.String TomlValueRef`.
-  new(result)
-  result.kind = TomlValueKind.String
-  result.stringVal = s
+  TomlValueRef(kind: TomlValueKind.String, stringVal: s)
 
 proc `?`*(n: int64): TomlValueRef =
   ## Generic constructor for TOML data. Creates a new `TomlValueKind.Int TomlValueRef`.
-  new(result)
-  result.kind = TomlValueKind.Int
-  result.intVal  = n
+  TomlValueRef(kind: TomlValueKind.Int, intVal: n)
 
 proc `?`*(n: float): TomlValueRef =
   ## Generic constructor for TOML data. Creates a new `TomlValueKind.Float TomlValueRef`.
-  new(result)
-  result.kind = TomlValueKind.Float
-  result.floatVal  = n
+  TomlValueRef(kind: TomlValueKind.Float, floatVal: n)
 
 proc `?`*(b: bool): TomlValueRef =
   ## Generic constructor for TOML data. Creates a new `TomlValueKind.Bool TomlValueRef`.
-  new(result)
-  result.kind = TomlValueKind.Bool
-  result.boolVal = b
+  TomlValueRef(kind: TomlValueKind.Bool, boolVal: b)
 
 proc `?`*(keyVals: openArray[tuple[key: string, val: TomlValueRef]]): TomlValueRef =
   ## Generic constructor for TOML data. Creates a new `TomlValueKind.Table TomlValueRef`
