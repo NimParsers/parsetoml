@@ -948,8 +948,8 @@ proc parseTableName(state: var ParserState,
       raise(newTomlError(state,
                          "unexpected character " & escape($nextChar)))
 
-proc setEmptyTableVal(val: TomlValueRef) =
-  val.kind = TomlValueKind.Table
+proc setEmptyTableVal(val: var TomlValueRef) =
+  val = TomlValueRef(kind: TomlValueKind.Table)
   new(val.tableVal)
   val.tableVal[] = initOrderedTable[string, TomlValueRef]()
 
