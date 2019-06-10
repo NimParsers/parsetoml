@@ -1,12 +1,14 @@
-import parsetoml
 import unittest
 import sequtils
 import json
 
+# include parsetoml so that we can also test non exported procs
+include parsetoml
+
 suite "parse various TOML types":
   setup:
     let
-      foo = parsetoml.parseString("""
+      foo = parseString("""
 some_integer = 123
 some_float = 1.23
 some_bool = true
@@ -59,3 +61,31 @@ file_name = "test.txt"
       $fooJson["some_string_array"] == """{"type":"array","value":[{"type":"string","value":"abc"},{"type":"string","value":"def"}]}"""
       $fooJson["some_int_array"] == """{"type":"array","value":[{"type":"integer","value":"123"},{"type":"integer","value":"456"}]}"""
       $fooJson["input"] == """{"file_name":{"type":"string","value":"test.txt"}}"""
+
+  test "TOML type constructors":
+    check:
+      newTString("Hello").kind == TomlValueKind.String
+    check:
+      newTInt(1234).kind == TomlValueKind.Int
+    check:
+      newTFloat(1.234).kind == TomlValueKind.Float
+    check:
+      newTBool(true).kind == TomlValueKind.Bool
+    check:
+      newTNull().kind == TomlValueKind.None
+    check:
+      newTTable().kind == TomlValueKind.Table
+    check:
+      newTArray().kind == TomlValueKind.Array
+
+    # set array value
+    var tomlRef: TomlValueRef
+    const num = 3
+    tomlRef.setArrayVal(num)
+    check:
+      tomlRef.kind == TomlValueKind.Array
+      tomlRef.arrayVal.len == num
+    # set empty table val
+    tomlRef.setEmptyTableVal()
+    check:
+      tomlRef.kind == TomlValueKind.Table
