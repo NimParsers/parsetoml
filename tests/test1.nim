@@ -65,18 +65,24 @@ file_name = "test.txt"
   test "TOML type constructors":
     check:
       newTString("Hello").kind == TomlValueKind.String
+      (?"Hello").kind == TomlValueKind.String
     check:
       newTInt(1234).kind == TomlValueKind.Int
+      (?1234).kind == TomlValueKind.Int
     check:
       newTFloat(1.234).kind == TomlValueKind.Float
+      (?1.234).kind == TomlValueKind.Float
     check:
       newTBool(true).kind == TomlValueKind.Bool
+      (?true).kind == TomlValueKind.Bool
     check:
       newTNull().kind == TomlValueKind.None
     check:
       newTTable().kind == TomlValueKind.Table
+      (?[("Hello", ?1234)]).kind == TomlValueKind.Table
     check:
       newTArray().kind == TomlValueKind.Array
+      (?[1, 2, 3, 4]).kind == TomlValueKind.Array
 
     # set array value
     var tomlRef: TomlValueRef
