@@ -11,7 +11,7 @@ skipDirs      = @["decoder"]
 
 requires "nim >= 0.18.0"
 
-from ospaths import `/`, expandTilde
+from os import `/`, expandTilde
 
 task run_toml_test, "Validates parsetoml using toml-test":
   exec("nim c -d:release decoder/decoder.nim")
