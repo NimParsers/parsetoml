@@ -1270,19 +1270,32 @@ proc parseString*(tomlStr: string, fileName: string = ""): TomlValueRef =
   ## Parses a string of TOML formatted data into a TOML table. The optional
   ## filename is used for error messages.
   let strStream = newStringStream(tomlStr)
-  result = parseStream(strStream, fileName)
+  try:
+    result = parseStream(strStream, fileName)
+  finally:
+    strStream.close()
 
 proc parseFile*(f: File, fileName: string = ""): TomlValueRef =
   ## Parses a file of TOML formatted data into a TOML table. The optional
   ## filename is used for error messages.
   let fStream = newFileStream(f)
-  result = parseStream(fStream, fileName)
+  try:
+    result = parseStream(fStream, fileName)
+  finally:
+    fStream.close()
 
 proc parseFile*(fileName: string): TomlValueRef =
   ## Parses the file found at fileName with TOML formatted data into a TOML
   ## table.
   let fStream = newFileStream(fileName, fmRead)
-  result = parseStream(fStream, fileName)
+  if not isNil(fStream):
+    try:
+      result = parseStream(fStream, fileName)
+    finally:
+      fStream.close()
+  else:
+    raise newException(IOError, "cannot open: " & fileName)
+
 
 proc `$`*(val: TomlDate): string =
   ## Converts the TOML date object into the ISO format read by the parser
