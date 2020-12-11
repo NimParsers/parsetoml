@@ -38,6 +38,12 @@ import tables
 import unicode
 export tables
 
+when (NimMajor, NimMinor, NimPatch) < (1, 4, 0):
+  type
+    IndexDefect* = IndexError
+    OverflowDefect* = OverflowError
+    Defect* = Exception
+
 type
   Sign* = enum None, Pos, Neg
 
