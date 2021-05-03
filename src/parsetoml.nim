@@ -731,7 +731,7 @@ proc parseDateOrTime(state: var ParserState, digits: int, yearOrHour: int): Toml
 
 proc parseFloat(state: var ParserState, intPart: int, forcedSign: Sign): TomlValueRef =
   var
-    decimalpart = parseDecimalPart(state)
+    decimalPart = parseDecimalPart(state)
     nextChar = state.getNextChar()
     exponent: int64 = 0
   if nextChar in {'e', 'E'}:
@@ -857,7 +857,7 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
         if state.getNextChar() != 'a' or
            state.getNextChar() != 'n':
             raise(newTomlError(oldState, "unknown identifier"))
-        return TomlValueRef(kind: TomlValueKind.Float, floatVal: Nan, forcedSign: forcedSign)
+        return TomlValueRef(kind: TomlValueKind.Float, floatVal: NaN, forcedSign: forcedSign)
       else:
         raise newTomlError(state, "illegal character " & escape($nextChar))
     break
@@ -1320,8 +1320,8 @@ proc `$`*(val: TomlDateTime): string =
     (if not val.shift: "" else: (
       (if val.zoneHourShift == 0 and val.zoneMinuteShift == 0: "Z" else: (
         ((if val.isShiftPositive: "+" else: "-") &
-        ($val.zonehourshift).align(2, '0') & ":" &
-        ($val.zoneminuteshift).align(2, '0'))
+        ($val.zoneHourShift).align(2, '0') & ":" &
+        ($val.zoneMinuteShift).align(2, '0'))
       ))
     ))
 
@@ -1339,7 +1339,7 @@ proc `$`*(val: TomlValueRef): string =
   of TomlValueKind.Bool:
     result = $val.boolVal
   of TomlValueKind.Datetime:
-    result = $val.datetimeVal
+    result = $val.dateTimeVal
   of TomlValueKind.Date:
     result = $val.dateVal
   of TomlValueKind.Time:
@@ -1365,7 +1365,7 @@ proc `$`*(val: TomlValue): string =
   of TomlValueKind.Bool:
     result = "boolean(" & $val.boolVal & ")"
   of TomlValueKind.Datetime:
-    result = "datetime(" & $val.datetimeVal & ")"
+    result = "datetime(" & $val.dateTimeVal & ")"
   of TomlValueKind.Date:
     result = "date(" & $val.dateVal & ")"
   of TomlValueKind.Time:
@@ -1426,10 +1426,10 @@ proc toJson*(value: TomlValueRef): JsonNode =
     of TomlValueKind.Bool:
       %*{"type": "bool", "value": $value.boolVal}
     of TomlValueKind.Datetime:
-      if value.datetimeVal.shift == false:
-        %*{"type": "datetime-local", "value": $value.datetimeVal}
+      if value.dateTimeVal.shift == false:
+        %*{"type": "datetime-local", "value": $value.dateTimeVal}
       else:
-        %*{"type": "datetime", "value": $value.datetimeVal}
+        %*{"type": "datetime", "value": $value.dateTimeVal}
     of TomlValueKind.Date:
       %*{"type": "date", "value": $value.dateVal}
     of TomlValueKind.Time:
@@ -1492,7 +1492,7 @@ proc toTomlString*(value: TomlValueRef): string =
   of TomlValueKind.Int: $value.intVal
   of TomlValueKind.Float: $value.floatVal
   of TomlValueKind.Bool: $value.boolVal
-  of TomlValueKind.Datetime: $value.datetimeVal
+  of TomlValueKind.Datetime: $value.dateTimeVal
   of TomlValueKind.String: "\"" & value.stringVal & "\""
   of TomlValueKind.Array:
     if value.arrayVal.len == 0:
@@ -1615,7 +1615,7 @@ proc `?`*(b: bool): TomlValueRef =
 
 proc `?`*(keyVals: openArray[tuple[key: string, val: TomlValueRef]]): TomlValueRef =
   ## Generic constructor for TOML data. Creates a new `TomlValueKind.Table TomlValueRef`
-  if keyvals.len == 0: return newTArray()
+  if keyVals.len == 0: return newTArray()
   result = newTTable()
   for key, val in items(keyVals): result.tableVal[key] = val
 
@@ -1658,7 +1658,7 @@ proc `?`*(o: enum): TomlValueRef =
 
 import macros
 
-proc toToml(x: NimNode): NimNode {.compiletime.} =
+proc toToml(x: NimNode): NimNode {.compileTime.} =
   case x.kind
   of nnkBracket: # array
     if x.len == 0: return newCall(bindSym"newTArray")
@@ -1690,7 +1690,7 @@ macro `?*`*(x: untyped): untyped =
 proc toTomlValue(x: NimNode): NimNode {.compileTime.} =
   newCall(bindSym("?", brOpen), x)
 
-proc toTomlNew(x: NimNode): NimNode {.compiletime.} =
+proc toTomlNew(x: NimNode): NimNode {.compileTime.} =
   echo x.treeRepr
   var
     i = 0
