@@ -95,3 +95,7 @@ file_name = "test.txt"
     tomlRef.setEmptyTableVal()
     check:
       tomlRef.kind == TomlValueKind.Table
+
+suite "bug fixes":
+  test "issue-45":
+    check "some_float = 0.123".parseString()["some_float"].getFloat() == 0.123
