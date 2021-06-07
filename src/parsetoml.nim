@@ -36,6 +36,8 @@ import streams
 import strutils
 import tables
 import unicode
+from parseutils import parseFloat
+
 export tables
 
 when (NimMajor, NimMinor, NimPatch) < (1, 4, 0):
@@ -271,11 +273,10 @@ proc parseEncoding(state: var ParserState): TomlValueRef =
 proc parseDecimalPart(state: var ParserState): float64 =
   var
     nextChar: char
-    invPowerOfTen = 10.0
     firstPos = true
     wasUnderscore = false
+    decimalPartStr = "0."
 
-  result = 0.0
   while true:
     wasUnderscore = nextChar == '_'
     nextChar = state.getNextChar()
@@ -293,11 +294,11 @@ proc parseDecimalPart(state: var ParserState): float64 =
         raise newTomlError(state, "decimal part empty")
       break
 
-    result = result + (int(nextChar) - int('0')).float / invPowerOfTen
-    invPowerOfTen *= 10
+    decimalPartStr.add(nextChar)
 
     firstPos = false
-
+  doAssert decimalPartStr.len > 2 # decimalPartStr shouldn't still be "0." at this point
+  discard parseutils.parseFloat(decimalPartStr, result)
 
 proc stringDelimiter(kind: StringType): char {.inline, noSideEffect.} =
   result = (case kind
