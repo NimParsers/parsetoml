@@ -1915,8 +1915,11 @@ proc copy*(p: TomlValueRef): TomlValueRef =
     for i in items(p.arrayVal):
       result.arrayVal.add(copy(i))
   of TomlValueKind.DateTime:
-    deepCopy(result, p)
+    new(result)
+    result[] = p[]
   of TomlValueKind.Date:
-    deepCopy(result, p)
+    new(result)
+    result[] = p[]
   of TomlValueKind.Time:
-    deepCopy(result, p)
+    new(result)
+    result[] = p[]
