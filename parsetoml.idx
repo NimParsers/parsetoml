@@ -1,0 +1,74 @@
+Introduction	index.html#introduction	 Introduction	
+Source	index.html#source	 Source	
+None	index.html#None	Sign.None	
+Pos	index.html#Pos	Sign.Pos	
+Neg	index.html#Neg	Sign.Neg	
+Sign	index.html#Sign	parsetoml: Sign	
+TomlValueKind	index.html#TomlValueKind	parsetoml: TomlValueKind	
+TomlDate	index.html#TomlDate	parsetoml: TomlDate	
+TomlTime	index.html#TomlTime	parsetoml: TomlTime	
+TomlDateTime	index.html#TomlDateTime	parsetoml: TomlDateTime	
+TomlTable	index.html#TomlTable	parsetoml: TomlTable	
+TomlTableRef	index.html#TomlTableRef	parsetoml: TomlTableRef	
+TomlValueRef	index.html#TomlValueRef	parsetoml: TomlValueRef	
+TomlValue	index.html#TomlValue	parsetoml: TomlValue	
+TomlError	index.html#TomlError	parsetoml: TomlError	
+parseStream	index.html#parseStream,,string	parsetoml: parseStream(inputStream: streams.Stream; fileName: string = &quot;&quot;): TomlValueRef	
+parseString	index.html#parseString,string,string	parsetoml: parseString(tomlStr: string; fileName: string = &quot;&quot;): TomlValueRef	
+parseFile	index.html#parseFile,File,string	parsetoml: parseFile(f: File; fileName: string = &quot;&quot;): TomlValueRef	
+parseFile	index.html#parseFile,string	parsetoml: parseFile(fileName: string): TomlValueRef	
+`$`	index.html#$,TomlDate	parsetoml: `$`(val: TomlDate): string	
+`$`	index.html#$,TomlTime	parsetoml: `$`(val: TomlTime): string	
+`$`	index.html#$,TomlDateTime	parsetoml: `$`(val: TomlDateTime): string	
+`$`	index.html#$,TomlValueRef	parsetoml: `$`(val: TomlValueRef): string	
+`$`	index.html#$,TomlValue	parsetoml: `$`(val: TomlValue): string	
+dump	index.html#dump,TomlTableRef,int	parsetoml: dump(table: TomlTableRef; indentLevel: int = 0)	
+toJson	index.html#toJson,TomlTableRef	parsetoml: toJson(table: TomlTableRef): JsonNode	
+toJson	index.html#toJson,TomlValueRef	parsetoml: toJson(value: TomlValueRef): JsonNode	
+toTomlString	index.html#toTomlString,TomlTableRef,string	parsetoml: toTomlString(value: TomlTableRef; parents = &quot;&quot;): string	
+toTomlString	index.html#toTomlString,TomlValueRef	parsetoml: toTomlString(value: TomlValueRef): string	
+newTString	index.html#newTString,string	parsetoml: newTString(s: string): TomlValueRef	
+newTInt	index.html#newTInt,int64	parsetoml: newTInt(n: int64): TomlValueRef	
+newTFloat	index.html#newTFloat,float	parsetoml: newTFloat(n: float): TomlValueRef	
+newTBool	index.html#newTBool,bool	parsetoml: newTBool(b: bool): TomlValueRef	
+newTNull	index.html#newTNull	parsetoml: newTNull(): TomlValueRef	
+newTTable	index.html#newTTable	parsetoml: newTTable(): TomlValueRef	
+newTArray	index.html#newTArray	parsetoml: newTArray(): TomlValueRef	
+getStr	index.html#getStr,TomlValueRef,string	parsetoml: getStr(n: TomlValueRef; default: string = &quot;&quot;): string	
+getInt	index.html#getInt,TomlValueRef,int	parsetoml: getInt(n: TomlValueRef; default: int = 0): int	
+getBiggestInt	index.html#getBiggestInt,TomlValueRef,int64	parsetoml: getBiggestInt(n: TomlValueRef; default: int64 = 0): int64	
+getFloat	index.html#getFloat,TomlValueRef,float	parsetoml: getFloat(n: TomlValueRef; default: float = 0.0): float	
+getBool	index.html#getBool,TomlValueRef,bool	parsetoml: getBool(n: TomlValueRef; default: bool = false): bool	
+getTable	index.html#getTable,TomlValueRef	parsetoml: getTable(n: TomlValueRef; default = new(TomlTableRef)): TomlTableRef	
+getElems	index.html#getElems,TomlValueRef,seq[TomlValueRef]	parsetoml: getElems(n: TomlValueRef; default: seq[TomlValueRef] = @[]): seq[TomlValueRef]	
+add	index.html#add,TomlValueRef,TomlValueRef	parsetoml: add(father, child: TomlValueRef)	
+add	index.html#add,TomlValueRef,string,TomlValueRef	parsetoml: add(obj: TomlValueRef; key: string; val: TomlValueRef)	
+`?`	index.html#?,string	parsetoml: `?`(s: string): TomlValueRef	
+`?`	index.html#?,int64	parsetoml: `?`(n: int64): TomlValueRef	
+`?`	index.html#?,float	parsetoml: `?`(n: float): TomlValueRef	
+`?`	index.html#?,bool	parsetoml: `?`(b: bool): TomlValueRef	
+`?`	index.html#?,openArray[tuple[string,TomlValueRef]]	parsetoml: `?`(keyVals: openArray[tuple[key: string, val: TomlValueRef]]): TomlValueRef	
+`?`	index.html#?.t,TomlValueRef	parsetoml: `?`(j: TomlValueRef): TomlValueRef	
+`?`	index.html#?,openArray[T]	parsetoml: `?`[T](elements: openArray[T]): TomlValueRef	
+`?`	index.html#?	parsetoml: `?`(o: object): TomlValueRef	
+`?`	index.html#?,ref.	parsetoml: `?`(o: ref object): TomlValueRef	
+`?`	index.html#?_2	parsetoml: `?`(o: enum): TomlValueRef	
+`?*`	index.html#?*.m,untyped	parsetoml: `?*`(x: untyped): untyped	
+parseToml	index.html#parseToml.m,untyped	parsetoml: parseToml(x: untyped): untyped	
+`==`	index.html#==,TomlValueRef,TomlValueRef	parsetoml: `==`(a, b: TomlValueRef): bool	
+hash	index.html#hash,TomlValueRef	parsetoml: hash(n: TomlValueRef): Hash	
+hash	index.html#hash,OrderedTable[string,TomlValueRef]	parsetoml: hash(n: OrderedTable[string, TomlValueRef]): Hash	
+len	index.html#len,TomlValueRef	parsetoml: len(n: TomlValueRef): int	
+`[]`	index.html#[],TomlValueRef,string	parsetoml: `[]`(node: TomlValueRef; name: string): TomlValueRef	
+`[]`	index.html#[],TomlValueRef,int	parsetoml: `[]`(node: TomlValueRef; index: int): TomlValueRef	
+hasKey	index.html#hasKey,TomlValueRef,string	parsetoml: hasKey(node: TomlValueRef; key: string): bool	
+contains	index.html#contains,TomlValueRef,string	parsetoml: contains(node: TomlValueRef; key: string): bool	
+contains	index.html#contains,TomlValueRef,TomlValueRef	parsetoml: contains(node: TomlValueRef; val: TomlValueRef): bool	
+existsKey	index.html#existsKey,TomlValueRef,string	parsetoml: existsKey(node: TomlValueRef; key: string): bool	
+`[]=`	index.html#[]=,TomlValueRef,string,TomlValueRef	parsetoml: `[]=`(obj: TomlValueRef; key: string; val: TomlValueRef)	
+`{}`	index.html#{},TomlValueRef,varargs[string]	parsetoml: `{}`(node: TomlValueRef; keys: varargs[string]): TomlValueRef	
+getOrDefault	index.html#getOrDefault,TomlValueRef,string	parsetoml: getOrDefault(node: TomlValueRef; key: string): TomlValueRef	
+simpleGetOrDefault	index.html#simpleGetOrDefault.t,TomlValueRef,string	parsetoml: simpleGetOrDefault{\n  `{}`(node, [key])\n}(node: TomlValueRef; key: string): TomlValueRef	
+`{}=`	index.html#{}=,TomlValueRef,varargs[string],TomlValueRef	parsetoml: `{}=`(node: TomlValueRef; keys: varargs[string]; value: TomlValueRef)	
+delete	index.html#delete,TomlValueRef,string	parsetoml: delete(obj: TomlValueRef; key: string)	
+copy	index.html#copy,TomlValueRef	parsetoml: copy(p: TomlValueRef): TomlValueRef	
