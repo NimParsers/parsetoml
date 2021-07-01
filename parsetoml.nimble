@@ -18,11 +18,9 @@ task run_toml_test, "Validates parsetoml using toml-test":
   # Needs "go" executable to be present in PATH.
   # In GHA, add "- uses: actions/setup-go@v2"
   let
-    goPath = getEnv("GOPATH")
     tomlTestRepo = "github.com/BurntSushi/toml-test"
-  doAssert goPath != ""
   exec("go get -u -v " & tomlTestRepo)
-  exec((goPath / "bin" / "toml-test") & " " & "decoder/decoder")
+  exec("toml-test decoder/decoder")
 
 task run_new_toml_test, "Validates parsetoml using toml-test from sgarciac":
   exec("nim c -d:release -d:newtestsuite decoder/decoder.nim")

@@ -32,7 +32,7 @@ jobs:
       - name: Run tests
         run: |
           nim test
+          which go
           go version
-          # https://github.com/golang/go/wiki/SettingGOPATH#go-113
-          go env -w GOPATH=$HOME/go
+          which toml-test
           nimble run_toml_test
