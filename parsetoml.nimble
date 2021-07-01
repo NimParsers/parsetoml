@@ -25,6 +25,9 @@ task run_toml_test, "Validates parsetoml using toml-test":
   exec("go get -u -v " & tomlTestRepo)
   exec("$#/bin/toml-test" % [goPath] & " decoder/decoder")
 
+# https://github.com/NimParsers/parsetoml/issues/40
+# FIXME: Delete below task once above issue is fixed
+# i.e. parsetoml starts supporting TOML v1.0.0.
 task run_toml_test_with_skips, "Validates parsetoml using toml-test (with test skips)":
   exec("nim c -d:release decoder/decoder.nim")
   # Needs "go" executable to be present in PATH.

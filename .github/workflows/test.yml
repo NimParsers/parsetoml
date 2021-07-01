@@ -49,4 +49,6 @@ jobs:
           GOPATH: "/home/runner/go"
         run: |
           go version
+          # https://github.com/NimParsers/parsetoml/issues/40
+          # nimble run_toml_test
           nimble run_toml_test_with_skips
