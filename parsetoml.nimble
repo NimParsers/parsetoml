@@ -84,4 +84,5 @@ task run_toml_test_with_skips, "Validates parsetoml using toml-test (with test s
     " -skip invalid/string-bad-multiline" &
     " -skip invalid/string-multiline-escape-space" &
     " -skip invalid/string-multiline-escape-space" &
+    " -skip valid/float-exponent" & # https://github.com/NimParsers/parsetoml/issues/51
     " decoder/decoder")
