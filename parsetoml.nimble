@@ -16,7 +16,7 @@ from os import `/`, expandTilde
 task run_toml_test, "Validates parsetoml using toml-test":
   exec("nim c -d:release decoder/decoder.nim")
   # Needs "go" executable to be present in PATH.
-  # For Travis, set "language:" to "go".
+  # In GHA, add "- uses: actions/setup-go@v2"
   let
     goPath = getEnv("GOPATH")
     tomlTestRepo = "github.com/BurntSushi/toml-test"
@@ -27,7 +27,7 @@ task run_toml_test, "Validates parsetoml using toml-test":
 task run_new_toml_test, "Validates parsetoml using toml-test from sgarciac":
   exec("nim c -d:release -d:newtestsuite decoder/decoder.nim")
   # Needs "go" executable to be present in PATH.
-  # For Travis, set "language:" to "go".
+  # In GHA, add "- uses: actions/setup-go@v2"
   let
     goPath = getEnv("GOPATH")
     tomlTestRepo = "github.com/sgarciac/toml-test"
