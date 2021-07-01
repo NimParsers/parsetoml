@@ -19,9 +19,7 @@ task run_toml_test, "Validates parsetoml using toml-test":
   # In GHA, add "- uses: actions/setup-go@v2"
   let
     goPath = getEnv("GOPATH")
-    # tomlTestRepo = "github.com/BurntSushi/toml-test@master" # This does not install the toml-test binary
-    # https://github.com/BurntSushi/toml-test/commit/9767d201b51ac9c50630f181828bcd922bf3e9e5
-    tomlTestRepo = "github.com/BurntSushi/toml-test@9767d201"
+    tomlTestRepo = "github.com/BurntSushi/toml-test/cmd/toml-test@master"
   doAssert goPath != ""
   exec("go get -u -v " & tomlTestRepo)
   exec((goPath / "bin" / "toml-test") & " " & "decoder/decoder")
