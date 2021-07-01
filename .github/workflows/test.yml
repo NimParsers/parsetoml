@@ -31,7 +31,7 @@ jobs:
         run: nim pullConfig
       - name: Run tests
         env:
-          GOPATH: /home/runner/work/parsetoml/go.apps/
+          GOPATH: /home/runner/work/parsetoml/parsetoml/go.apps/
         run: |
           nim test
           go version
