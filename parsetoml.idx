@@ -1,5 +1,3 @@
-Introduction	index.html#introduction	 Introduction	
-Source	index.html#source	 Source	
 None	index.html#None	Sign.None	
 Pos	index.html#Pos	Sign.Pos	
 Neg	index.html#Neg	Sign.Neg	
@@ -72,3 +70,5 @@ simpleGetOrDefault	index.html#simpleGetOrDefault.t,TomlValueRef,string	parsetoml
 `{}=`	index.html#{}=,TomlValueRef,varargs[string],TomlValueRef	parsetoml: `{}=`(node: TomlValueRef; keys: varargs[string]; value: TomlValueRef)	
 delete	index.html#delete,TomlValueRef,string	parsetoml: delete(obj: TomlValueRef; key: string)	
 copy	index.html#copy,TomlValueRef	parsetoml: copy(p: TomlValueRef): TomlValueRef	
+Introduction	index.html#introduction	 Introduction	
+Source	index.html#source	 Source	
