@@ -15,11 +15,21 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # os: [ubuntu-latest, windows-latest, macos-latest]
+        # Fails on macos with this error
+        #  go: writing stat cache: mkdir /home/runner: operation not supported
+        #  go: writing stat cache: mkdir /home/runner: operation not supported
+        #  go: downloading github.com/BurntSushi/toml-test v0.1.1-0.20210628215546-8c0aa6d9c74f
+        #  go get github.com/BurntSushi/toml-test/cmd/toml-test@master: mkdir /home/runner: operation not supported
+        #  stack trace: (most recent call last)
+        #  /private/var/folders/24/8k48jl6d249_n_qfxwsl6xvm0000gn/T/nimblecache-946033505/nimscriptapi_610282258.nim(187, 16)
+        #  /Users/runner/work/parsetoml/parsetoml/parsetoml.nimble(36, 7) run_toml_test_with_skipsTask
+        #  /Users/runner/work/parsetoml/parsetoml/nim/lib/system/nimscript.nim(273, 7) exec
+        #  /Users/runner/work/parsetoml/parsetoml/nim/lib/system/nimscript.nim(273, 7) Error: unhandled exception: FAILED: go get -u -v github.com/BurntSushi/toml-test/cmd/toml-test@master [OSError]
+        os: [ubuntu-latest, windows-latest]
         nim: ['devel', 'version-1-4']
     steps:
       - uses: actions/checkout@v2
-      # - uses: actions/setup-go@v2 # For 'nimble run_toml_test'
       - uses: alaviss/setup-nim@0.1.1
         with:
           path: 'nim'
@@ -29,7 +39,14 @@ jobs:
         run: nimble install --depsOnly --accept
       - name: Pull kaushalmodi's global config.nims # For 'nim test'
         run: nim pullConfig
-      - name: Run tests
+      - name: Run Nim tests
+        run: nim test
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '1.16.5'
+      - name: Run Go tests
         run: |
-          nim test
+          go version
+          # https://github.com/NimParsers/parsetoml/issues/40
           # nimble run_toml_test
+          nimble run_toml_test_with_skips
