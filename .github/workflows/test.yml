@@ -34,5 +34,6 @@ jobs:
           nim test
           which go
           go version
+          go get -u -v github.com/BurntSushi/toml-test
           which toml-test
           nimble run_toml_test
