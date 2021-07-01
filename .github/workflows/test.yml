@@ -19,7 +19,7 @@ jobs:
         nim: ['devel', 'version-1-4']
     steps:
       - uses: actions/checkout@v2
-      # - uses: actions/setup-go@v2 # For 'nimble run_toml_test'
+      - uses: actions/setup-go@v2 # For 'nimble run_toml_test'
       - uses: alaviss/setup-nim@0.1.1
         with:
           path: 'nim'
@@ -30,6 +30,8 @@ jobs:
       - name: Pull kaushalmodi's global config.nims # For 'nim test'
         run: nim pullConfig
       - name: Run tests
+        env:
+          GOPATH: /home/runner/work/parsetoml/go.apps/
         run: |
           nim test
-          # nimble run_toml_test
+          nimble run_toml_test
