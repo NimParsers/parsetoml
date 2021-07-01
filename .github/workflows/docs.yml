@@ -1,0 +1,29 @@
+name: GenerateDocs
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  gen_docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: alaviss/setup-nim@0.1.1
+        with:
+          path: 'nim'
+          version: 'devel'
+      - name: Pull kaushalmodi's global config.nims # For 'nim docs'
+        run: nim pullConfig
+      - name: Generate docs
+        run: nim docs
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3.7.3
+        with:
+          # Note that the GITHUB_TOKEN is NOT a personal access
+          # token. A GitHub Actions runner automatically creates a
+          # GITHUB_TOKEN secret to authenticate in your workflow.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public

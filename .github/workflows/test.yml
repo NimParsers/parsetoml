@@ -1,0 +1,35 @@
+name: RunTests
+
+on:
+  pull_request:
+    types:
+      - '*'
+  push:
+  schedule:
+    # Every week: https://crontab.guru/#0_0_*_*_0
+    - cron: '0 0 * * 0'
+
+jobs:
+  run_tests:
+    # runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        nim: ['devel', 'version-1-4']
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2 # For 'nimble run_toml_test'
+      - uses: alaviss/setup-nim@0.1.1
+        with:
+          path: 'nim'
+          version: ${{ matrix.nim }}
+      # Test nimble install.
+      - name: Test Nimble Install
+        run: nimble install --depsOnly --accept
+      - name: Pull kaushalmodi's global config.nims # For 'nim test'
+        run: nim pullConfig
+      - name: Run tests
+        run: |
+          nim test
+          nimble run_toml_test
