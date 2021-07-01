@@ -15,7 +15,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # os: [ubuntu-latest, windows-latest, macos-latest]
+        # Fails on macos with this error
+        #  go: writing stat cache: mkdir /home/runner: operation not supported
+        #  go: writing stat cache: mkdir /home/runner: operation not supported
+        #  go: downloading github.com/BurntSushi/toml-test v0.1.1-0.20210628215546-8c0aa6d9c74f
+        #  go get github.com/BurntSushi/toml-test/cmd/toml-test@master: mkdir /home/runner: operation not supported
+        #  stack trace: (most recent call last)
+        #  /private/var/folders/24/8k48jl6d249_n_qfxwsl6xvm0000gn/T/nimblecache-946033505/nimscriptapi_610282258.nim(187, 16)
+        #  /Users/runner/work/parsetoml/parsetoml/parsetoml.nimble(36, 7) run_toml_test_with_skipsTask
+        #  /Users/runner/work/parsetoml/parsetoml/nim/lib/system/nimscript.nim(273, 7) exec
+        #  /Users/runner/work/parsetoml/parsetoml/nim/lib/system/nimscript.nim(273, 7) Error: unhandled exception: FAILED: go get -u -v github.com/BurntSushi/toml-test/cmd/toml-test@master [OSError]
+        os: [ubuntu-latest, windows-latest]
         nim: ['devel', 'version-1-4']
     steps:
       - uses: actions/checkout@v2
