@@ -30,10 +30,10 @@ jobs:
         run: nim pullConfig
       - name: Run Nim tests
         run: nim test
-      - name: Run Go tests
-        uses: actions/setup-go@v2 # For 'nimble run_toml_test'
+      - uses: actions/setup-go@v2 # For 'nimble run_toml_test'
         with:
           go-version: '1.16.5'
+      - name: Run Go tests
         run: |
           which go
           go version
