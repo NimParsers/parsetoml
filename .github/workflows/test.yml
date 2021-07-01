@@ -26,7 +26,10 @@ jobs:
         #  /Users/runner/work/parsetoml/parsetoml/parsetoml.nimble(36, 7) run_toml_test_with_skipsTask
         #  /Users/runner/work/parsetoml/parsetoml/nim/lib/system/nimscript.nim(273, 7) exec
         #  /Users/runner/work/parsetoml/parsetoml/nim/lib/system/nimscript.nim(273, 7) Error: unhandled exception: FAILED: go get -u -v github.com/BurntSushi/toml-test/cmd/toml-test@master [OSError]
-        os: [ubuntu-latest, windows-latest]
+        #
+        # The tests don't work on Windows either; fails with this error:
+        #  go: GOPATH entry is relative; must be absolute path: "/home/runner/go".
+        os: [ubuntu-latest]
         nim: ['devel', 'version-1-4']
     steps:
       - uses: actions/checkout@v2
