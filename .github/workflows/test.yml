@@ -38,4 +38,4 @@ jobs:
           GOPATH: "/home/runner/go"
         run: |
           go version
-          nimble run_toml_test
+          nimble run_toml_test_with_skips
