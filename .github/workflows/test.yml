@@ -30,9 +30,9 @@ jobs:
       - name: Pull kaushalmodi's global config.nims # For 'nim test'
         run: nim pullConfig
       - name: Run tests
-        env:
-          GOPATH: /home/runner/work/parsetoml/parsetoml/go.apps/
         run: |
           nim test
           go version
+          # https://github.com/golang/go/wiki/SettingGOPATH#go-113
+          go env -w GOPATH=$HOME/go
           nimble run_toml_test
