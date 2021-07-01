@@ -34,4 +34,5 @@ jobs:
           GOPATH: /home/runner/work/parsetoml/go.apps/
         run: |
           nim test
+          go version
           nimble run_toml_test
