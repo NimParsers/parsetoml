@@ -64,7 +64,6 @@ task run_toml_test_with_skips, "Validates parsetoml using toml-test (with test s
     " -skip valid/spec-example-1" &
     " -skip invalid/array-missing-separator" &
     " -skip invalid/array-of-tables-1" &
-    " -skip invalid/control-string-bs" &
     " -skip invalid/duplicate-table-array2" &
     " -skip invalid/encoding-bad-utf8-in-comment" &
     " -skip invalid/encoding-bad-utf8-in-string" &

@@ -121,6 +121,8 @@ type
 
 const
   defaultStringCapacity = 256
+  ctrlChars = {'\x00' .. '\x08', '\x0A' .. '\x1F', '\x7F'} # '\x09' - TAB is not counted as control char
+  ctrlCharsExclCrLf = ctrlChars - {'\x0A', '\x0D'}
 
 proc newTomlError(location: ParserState, msg: string): ref TomlError =
   result = newException(TomlError, location.fileName & "(" & $location.line &
@@ -177,7 +179,7 @@ proc getNextNonWhitespace(state: var ParserState,
         # https://toml.io/en/v1.0.0#comment
         # Control characters other than tab (U+0009) are not permitted in comments.
         # Invalid control characters: U+0000 to U+0008, U+000A to U+001F, U+007F
-        if nextChar notin {'\l', '\t', ' ' .. '~'}:
+        if nextChar in ctrlCharsExclCrLf:
           raise newTomlError(state, "invalid control char 0x$# found in a comment" % [nextChar.ord.toHex(2)])
 
     if nextChar notin whitespaces: break
@@ -366,8 +368,12 @@ proc parseSingleLineString(state: var ParserState, kind: StringType): string =
     if nextChar == '\0':
       raise(newTomlError(state, "unterminated string"))
 
-    if ord(nextChar) in {16, 31, 127}:
-      raise(newTomlError(state, "invalid character in string, ord: " & $ord(nextChar)))
+    # https://toml.io/en/v1.0.0#string
+    # Any Unicode character may be used except those that must be escaped:
+    # quotation mark, backslash, and the control characters other than tab
+    # (U+0000 to U+0008, U+000A to U+001F, U+007F).
+    if nextChar in ctrlChars:
+      raise(newTomlError(state, "invalid character in string: 0x$#" % nextChar.ord.toHex(2)))
 
     if nextChar == '\\' and kind == StringType.Basic:
       nextChar = state.getNextChar()
@@ -435,8 +441,13 @@ proc parseMultiLineString(state: var ParserState, kind: StringType): string =
     if nextChar == '\0':
       raise(newTomlError(state, "unterminated string"))
 
-    if ord(nextChar) in {16, 31, 127}:
-      raise(newTomlError(state, "invalid character in string, ord: " & $ord(nextChar)))
+    # https://toml.io/en/v1.0.0#string
+    # Any Unicode character may be used except those that must be
+    # escaped: backslash and the control characters other than tab,
+    # line feed, and carriage return (U+0000 to U+0008, U+000B,
+    # U+000C, U+000E to U+001F, U+007F).
+    if nextChar in ctrlCharsExclCrLf:
+      raise(newTomlError(state, "invalid character in string: 0x$#" % nextChar.ord.toHex(2)))
 
     result.add(nextChar)
     isFirstChar = false
