@@ -174,6 +174,11 @@ proc getNextNonWhitespace(state: var ParserState,
       # Skip the comment up to the newline, but do not jump over it
       while nextChar != '\l' and nextChar != '\0':
         nextChar = state.getNextChar()
+        # https://toml.io/en/v1.0.0#comment
+        # Control characters other than tab (U+0009) are not permitted in comments.
+        # Invalid control characters: U+0000 to U+0008, U+000A to U+001F, U+007F
+        if nextChar notin {'\l', '\t', ' ' .. '~'}:
+          raise newTomlError(state, "invalid control char 0x$# found in a comment" % [nextChar.ord.toHex(2)])
 
     if nextChar notin whitespaces: break
 
