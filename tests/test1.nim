@@ -20,6 +20,10 @@ m_zero_array = [-0, 1]
 p_zero_float_array = [+0.0, 1.0]
 m_zero_float_array = [-0.0, 1.0]
 
+[table_with_empty]
+array_with_empty = [["a", "b"], [], [2, 3]]
+array_empty = []
+
 [input]
 file_name = "test.txt"
 """)
@@ -49,6 +53,20 @@ file_name = "test.txt"
       foo["m_zero_array"].getElems().mapIt(it.getInt()) == @[0, 1]
       foo["p_zero_float_array"].getElems().mapIt(it.getFloat()) == @[0'f64, 1]
       foo["m_zero_float_array"].getElems().mapIt(it.getFloat()) == @[0'f64, 1]
+
+  test "TOML empty arrays / arrays with empty fields":
+    let arrays = foo["table_with_empty"]["array_with_empty"]
+    check arrays[0].getElems().mapIt(it.getStr()) == @["a", "b"]
+    check arrays[1].getElems().len == 0
+    check arrays[2].getElems().mapIt(it.getInt()) == @[2, 3]
+    check arrays.toTomlString() == """[["a", "b"], [], [2, 3]]"""
+
+    let tab = foo["table_with_empty"]
+    check tab["array_empty"].kind == TomlValueKind.Array
+    check tab["array_empty"].len == 0
+    check tab.toTomlString() == """array_with_empty = [["a", "b"], [], [2, 3]]
+array_empty = []
+"""
 
   test "TOML Table/JSON":
     let

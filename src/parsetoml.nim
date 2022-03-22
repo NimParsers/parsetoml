@@ -1487,7 +1487,8 @@ proc toTomlString*(value: TomlTableRef, parents = ""): string =
       if value.kind == TomlValueKind.Table:
         subtables.add((key: key, value: value))
       elif value.kind == TomlValueKind.Array and
-        value.arrayVal[0].kind == TomlValueKind.Table:
+           value.arrayVal.len > 0 and
+           value.arrayVal[0].kind == TomlValueKind.Table:
         let tables = value.arrayVal.map(toTomlString)
         for table in tables:
           result = result & "[[" & key & "]]\n" & table & "\n"
