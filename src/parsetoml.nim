@@ -44,7 +44,6 @@ when (NimMajor, NimMinor, NimPatch) < (1, 4, 0):
   type
     IndexDefect* = IndexError
     OverflowDefect* = OverflowError
-    Defect* = Exception
 
 type
   Sign* = enum None, Pos, Neg
@@ -109,7 +108,7 @@ type
     stream*: streams.Stream
     curTableRef*: TomlTableRef
 
-  TomlError* = object of Defect
+  TomlError* = object of ValueError
     location*: ParserState
 
   NumberBase = enum
