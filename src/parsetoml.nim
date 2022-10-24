@@ -1739,7 +1739,7 @@ macro `parseToml`*(x: untyped): untyped =
   result = toTomlNew(x)
   echo result.repr
 
-proc `==`* (a, b: TomlValueRef): bool =
+func `==`* (a, b: TomlValueRef): bool =
   ## Check two nodes for equality
   if a.isNil:
     if b.isNil: return true
@@ -1799,7 +1799,7 @@ import hashes
 
 proc hash*(n: OrderedTable[string, TomlValueRef]): Hash {.noSideEffect.}
 
-proc hash*(n: TomlValueRef): Hash =
+proc hash*(n: TomlValueRef): Hash {.noSideEffect.} =
   ## Compute the hash for a TOML node
   case n.kind
   of TomlValueKind.Array:
