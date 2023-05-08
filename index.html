@@ -61,16 +61,8 @@
   day*: int">TomlDate</a></li>
 <li><a class="reference" href="#TomlDateTime" title="TomlDateTime = object
   date*: TomlDate
-  time*: TomlTime
-  case shift*: bool
-  of true:
-      isShiftPositive*: bool
-      zoneHourShift*: int
-      zoneMinuteShift*: int
-
-  of false:
-    nil">TomlDateTime</a></li>
-<li><a class="reference" href="#TomlError" title="TomlError = object of Defect
+  time*: TomlTime">TomlDateTime</a></li>
+<li><a class="reference" href="#TomlError" title="TomlError = object of ValueError
   location*: ParserState">TomlError</a></li>
 <li><a class="reference" href="#TomlTable" title="TomlTable = OrderedTable[string, TomlValueRef]">TomlTable</a></li>
 <li><a class="reference" href="#TomlTableRef" title="TomlTableRef = ref TomlTable">TomlTableRef</a></li>
@@ -79,30 +71,7 @@
   minute*: int
   second*: int
   subsecond*: int">TomlTime</a></li>
-<li><a class="reference" href="#TomlValue" title="TomlValue = object
-  case kind*: TomlValueKind
-  of TomlValueKind.None:
-    nil
-  of TomlValueKind.Int:
-    intVal*: int64
-  of TomlValueKind.Float:
-      floatVal*: float64
-      forcedSign*: Sign
-
-  of TomlValueKind.Bool:
-    boolVal*: bool
-  of TomlValueKind.Datetime:
-    dateTimeVal*: TomlDateTime
-  of TomlValueKind.Date:
-    dateVal*: TomlDate
-  of TomlValueKind.Time:
-    timeVal*: TomlTime
-  of TomlValueKind.String:
-    stringVal*: string
-  of TomlValueKind.Array:
-    arrayVal*: seq[TomlValueRef]
-  of TomlValueKind.Table:
-    tableVal*: TomlTableRef">TomlValue</a></li>
+<li><a class="reference" href="#TomlValue" title="TomlValue = object">TomlValue</a></li>
 <li><a class="reference" href="#TomlValueKind" title="TomlValueKind {.pure.} = enum
   None, Int, Float, Bool, Datetime, Date, Time, String, Array, Table">TomlValueKind</a></li>
 <li><a class="reference" href="#TomlValueRef" title="TomlValueRef = ref TomlValue">TomlValueRef</a></li>
@@ -359,15 +328,7 @@
   <dt><pre><a href="index.html#TomlDateTime"><span class="Identifier">TomlDateTime</span></a> <span class="Other">=</span> <span class="Keyword">object</span>
   <span class="Identifier">date</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlDate"><span class="Identifier">TomlDate</span></a>
   <span class="Identifier">time</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlTime"><span class="Identifier">TomlTime</span></a>
-  <span class="Keyword">case</span> <span class="Identifier">shift</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">bool</span>
-  <span class="Keyword">of</span> <span class="Identifier">true</span><span class="Other">:</span>
-      <span class="Identifier">isShiftPositive</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">bool</span>
-      <span class="Identifier">zoneHourShift</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">int</span>
-      <span class="Identifier">zoneMinuteShift</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">int</span>
-
-  <span class="Keyword">of</span> <span class="Identifier">false</span><span class="Other">:</span>
-    <span class="Keyword">nil</span>
-  </pre></dt>
+</pre></dt>
   <dd>
     
     
@@ -375,7 +336,7 @@
   </dd>
 </div>
 <div id="TomlError">
-  <dt><pre><a href="index.html#TomlError"><span class="Identifier">TomlError</span></a> <span class="Other">=</span> <span class="Keyword">object</span> <span class="Keyword">of</span> <span class="Identifier">Defect</span>
+  <dt><pre><a href="index.html#TomlError"><span class="Identifier">TomlError</span></a> <span class="Other">=</span> <span class="Keyword">object</span> <span class="Keyword">of</span> <span class="Identifier">ValueError</span>
   <span class="Identifier">location</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">ParserState</span>
 </pre></dt>
   <dd>
@@ -415,29 +376,6 @@
 </div>
 <div id="TomlValue">
   <dt><pre><a href="index.html#TomlValue"><span class="Identifier">TomlValue</span></a> <span class="Other">=</span> <span class="Keyword">object</span>
-  <span class="Keyword">case</span> <span class="Identifier">kind</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlValueKind"><span class="Identifier">TomlValueKind</span></a>
-  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">None</span><span class="Other">:</span>
-    <span class="Keyword">nil</span>
-  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Int</span><span class="Other">:</span>
-    <span class="Identifier">intVal</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">int64</span>
-  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Float</span><span class="Other">:</span>
-      <span class="Identifier">floatVal</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">float64</span>
-      <span class="Identifier">forcedSign</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#Sign"><span class="Identifier">Sign</span></a>
-
-  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Bool</span><span class="Other">:</span>
-    <span class="Identifier">boolVal</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">bool</span>
-  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Datetime</span><span class="Other">:</span>
-    <span class="Identifier">dateTimeVal</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlDateTime"><span class="Identifier">TomlDateTime</span></a>
-  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Date</span><span class="Other">:</span>
-    <span class="Identifier">dateVal</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlDate"><span class="Identifier">TomlDate</span></a>
-  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Time</span><span class="Other">:</span>
-    <span class="Identifier">timeVal</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlTime"><span class="Identifier">TomlTime</span></a>
-  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">String</span><span class="Other">:</span>
-    <span class="Identifier">stringVal</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>
-  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Array</span><span class="Other">:</span>
-    <span class="Identifier">arrayVal</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><a href="index.html#TomlValueRef"><span class="Identifier">TomlValueRef</span></a><span class="Other">]</span>
-  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Table</span><span class="Other">:</span>
-    <span class="Identifier">tableVal</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlTableRef"><span class="Identifier">TomlTableRef</span></a>
   </pre></dt>
   <dd>
     
@@ -957,7 +895,7 @@
 <div id="parseFile-procs-all">
   <div id="parseFile,File,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#parseFile%2CFile%2Cstring"><span class="Identifier">parseFile</span></a><span class="Other">(</span><span class="Identifier">f</span><span class="Other">:</span> <span class="Identifier">File</span><span class="Other">;</span> <span class="Identifier">fileName</span><span class="Other">:</span> <span class="Identifier">string</span> <span class="Other">=</span> <span class="StringLit">&quot;&quot;</span><span class="Other">)</span><span class="Other">:</span> <a href="index.html#TomlValueRef"><span class="Identifier">TomlValueRef</span></a> {.
-    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">KeyError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span>
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">TomlError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">KeyError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span>
     <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
@@ -967,7 +905,7 @@
 </div>
 <div id="parseFile,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#parseFile%2Cstring"><span class="Identifier">parseFile</span></a><span class="Other">(</span><span class="Identifier">fileName</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <a href="index.html#TomlValueRef"><span class="Identifier">TomlValueRef</span></a> {.
-    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">KeyError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span>
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">TomlError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">KeyError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span>
     <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
@@ -980,7 +918,7 @@
 <div id="parseStream-procs-all">
   <div id="parseStream,,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#parseStream%2C%2Cstring"><span class="Identifier">parseStream</span></a><span class="Other">(</span><span class="Identifier">inputStream</span><span class="Other">:</span> <span class="Identifier">streams</span><span class="Other">.</span><span class="Identifier">Stream</span><span class="Other">;</span> <span class="Identifier">fileName</span><span class="Other">:</span> <span class="Identifier">string</span> <span class="Other">=</span> <span class="StringLit">&quot;&quot;</span><span class="Other">)</span><span class="Other">:</span> <a href="index.html#TomlValueRef"><span class="Identifier">TomlValueRef</span></a> {.
-    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">KeyError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span>
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">TomlError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">KeyError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span>
     <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
@@ -993,7 +931,7 @@
 <div id="parseString-procs-all">
   <div id="parseString,string,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#parseString%2Cstring%2Cstring"><span class="Identifier">parseString</span></a><span class="Other">(</span><span class="Identifier">tomlStr</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">fileName</span><span class="Other">:</span> <span class="Identifier">string</span> <span class="Other">=</span> <span class="StringLit">&quot;&quot;</span><span class="Other">)</span><span class="Other">:</span> <a href="index.html#TomlValueRef"><span class="Identifier">TomlValueRef</span></a> {.
-    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">KeyError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span>
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">TomlError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">KeyError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span>
     <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
@@ -1018,7 +956,7 @@
     <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Converts a TOML value to a JSON node. This uses the format specified in the validation suite for it's output: <a class="reference external" href="https://github.com/BurntSushi/toml-test#example-json-encoding">https://github.com/BurntSushi/toml-test#example-json-encoding</a>
+    
     
   </dd>
 </div>
@@ -1039,7 +977,7 @@
     <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Converts a TOML value to a TOML formatted string for output to a file.
+    
     
   </dd>
 </div>
@@ -1137,7 +1075,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2022-12-31 14:59:08 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2023-05-08 17:11:44 UTC</small>
       </div>
     </div>
   </div>
