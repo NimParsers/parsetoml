@@ -61,7 +61,15 @@
   day*: int">TomlDate</a></li>
 <li><a class="reference" href="#TomlDateTime" title="TomlDateTime = object
   date*: TomlDate
-  time*: TomlTime">TomlDateTime</a></li>
+  time*: TomlTime
+  case shift*: bool
+  of true:
+      isShiftPositive*: bool
+      zoneHourShift*: int
+      zoneMinuteShift*: int
+
+  of false:
+    nil">TomlDateTime</a></li>
 <li><a class="reference" href="#TomlError" title="TomlError = object of ValueError
   location*: ParserState">TomlError</a></li>
 <li><a class="reference" href="#TomlTable" title="TomlTable = OrderedTable[string, TomlValueRef]">TomlTable</a></li>
@@ -71,7 +79,30 @@
   minute*: int
   second*: int
   subsecond*: int">TomlTime</a></li>
-<li><a class="reference" href="#TomlValue" title="TomlValue = object">TomlValue</a></li>
+<li><a class="reference" href="#TomlValue" title="TomlValue = object
+  case kind*: TomlValueKind
+  of TomlValueKind.None:
+    nil
+  of TomlValueKind.Int:
+    intVal*: int64
+  of TomlValueKind.Float:
+      floatVal*: float64
+      forcedSign*: Sign
+
+  of TomlValueKind.Bool:
+    boolVal*: bool
+  of TomlValueKind.Datetime:
+    dateTimeVal*: TomlDateTime
+  of TomlValueKind.Date:
+    dateVal*: TomlDate
+  of TomlValueKind.Time:
+    timeVal*: TomlTime
+  of TomlValueKind.String:
+    stringVal*: string
+  of TomlValueKind.Array:
+    arrayVal*: seq[TomlValueRef]
+  of TomlValueKind.Table:
+    tableVal*: TomlTableRef">TomlValue</a></li>
 <li><a class="reference" href="#TomlValueKind" title="TomlValueKind {.pure.} = enum
   None, Int, Float, Bool, Datetime, Date, Time, String, Array, Table">TomlValueKind</a></li>
 <li><a class="reference" href="#TomlValueRef" title="TomlValueRef = ref TomlValue">TomlValueRef</a></li>
@@ -328,7 +359,15 @@
   <dt><pre><a href="index.html#TomlDateTime"><span class="Identifier">TomlDateTime</span></a> <span class="Other">=</span> <span class="Keyword">object</span>
   <span class="Identifier">date</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlDate"><span class="Identifier">TomlDate</span></a>
   <span class="Identifier">time</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlTime"><span class="Identifier">TomlTime</span></a>
-</pre></dt>
+  <span class="Keyword">case</span> <span class="Identifier">shift</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">bool</span>
+  <span class="Keyword">of</span> <span class="Identifier">true</span><span class="Other">:</span>
+      <span class="Identifier">isShiftPositive</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">bool</span>
+      <span class="Identifier">zoneHourShift</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">int</span>
+      <span class="Identifier">zoneMinuteShift</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">int</span>
+
+  <span class="Keyword">of</span> <span class="Identifier">false</span><span class="Other">:</span>
+    <span class="Keyword">nil</span>
+  </pre></dt>
   <dd>
     
     
@@ -376,6 +415,29 @@
 </div>
 <div id="TomlValue">
   <dt><pre><a href="index.html#TomlValue"><span class="Identifier">TomlValue</span></a> <span class="Other">=</span> <span class="Keyword">object</span>
+  <span class="Keyword">case</span> <span class="Identifier">kind</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlValueKind"><span class="Identifier">TomlValueKind</span></a>
+  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">None</span><span class="Other">:</span>
+    <span class="Keyword">nil</span>
+  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Int</span><span class="Other">:</span>
+    <span class="Identifier">intVal</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">int64</span>
+  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Float</span><span class="Other">:</span>
+      <span class="Identifier">floatVal</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">float64</span>
+      <span class="Identifier">forcedSign</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#Sign"><span class="Identifier">Sign</span></a>
+
+  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Bool</span><span class="Other">:</span>
+    <span class="Identifier">boolVal</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">bool</span>
+  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Datetime</span><span class="Other">:</span>
+    <span class="Identifier">dateTimeVal</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlDateTime"><span class="Identifier">TomlDateTime</span></a>
+  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Date</span><span class="Other">:</span>
+    <span class="Identifier">dateVal</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlDate"><span class="Identifier">TomlDate</span></a>
+  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Time</span><span class="Other">:</span>
+    <span class="Identifier">timeVal</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlTime"><span class="Identifier">TomlTime</span></a>
+  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">String</span><span class="Other">:</span>
+    <span class="Identifier">stringVal</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>
+  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Array</span><span class="Other">:</span>
+    <span class="Identifier">arrayVal</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><a href="index.html#TomlValueRef"><span class="Identifier">TomlValueRef</span></a><span class="Other">]</span>
+  <span class="Keyword">of</span> <span class="Identifier">TomlValueKind</span><span class="Other">.</span><span class="Identifier">Table</span><span class="Other">:</span>
+    <span class="Identifier">tableVal</span><span class="Operator">*</span><span class="Other">:</span> <a href="index.html#TomlTableRef"><span class="Identifier">TomlTableRef</span></a>
   </pre></dt>
   <dd>
     
@@ -1075,7 +1137,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2023-06-15 10:49:09 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2023-08-05 22:27:31 UTC</small>
       </div>
     </div>
   </div>
