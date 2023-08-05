@@ -1765,7 +1765,8 @@ func `==`* (a, b: TomlValueRef): bool =
       if a.tableVal.len != b.tableVal.len: return false
       for key, val in a.tableVal:
         if not b.tableVal.hasKey(key): return false
-        if b.tableVal[key] != val: return false
+        {.noSideEffect.}:
+          if b.tableVal[key] != val: return false
       result = true
     of TomlValueKind.DateTime:
       result =
