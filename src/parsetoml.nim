@@ -500,21 +500,12 @@ proc parseArray(state: var ParserState): seq[TomlValueRef] =
 
       state.pushBackChar(nextChar)
     else:
-      let oldState = state # Saved for error messages
       var newValue: TomlValueRef
       if nextChar != '{':
         state.pushBackChar(nextChar)
         newValue = parseValue(state)
       else:
         newValue = parseInlineTable(state)
-
-      if len(result) > 0:
-        # Check that the type of newValue is compatible with the
-        # previous ones
-        if newValue.kind != result[low(result)].kind:
-          raise(newTomlError(oldState,
-                             "array members with incompatible types"))
-
       result.add(newValue)
 
 proc parseStrictNum(state: var ParserState,
@@ -745,7 +736,12 @@ proc parseDateOrTime(state: var ParserState, digits: int, yearOrHour: int): Toml
       else: raise newTomlError(state, "illegal character")
     break
 
-proc parseFloat(state: var ParserState, intPart: int, forcedSign: Sign): TomlValueRef =
+proc parseFloat(state: var ParserState, intPart: int, forcedSign: Sign, isExp = false): TomlValueRef =
+  # Handle cases like 0e02
+  if isExp:
+    # Still parse the whole exponent
+    let exponent = parseInt(state, base10, LeadingChar.AllowZero)
+    return TomlValueRef(kind: TomlValueKind.Float, floatVal: if forcedSign == Neg: -0.0 else: 0.0, forcedSign: forcedSign)
   var
     decimalPart = parseDecimalPart(state)
     nextChar = state.getNextChar()
@@ -754,7 +750,6 @@ proc parseFloat(state: var ParserState, intPart: int, forcedSign: Sign): TomlVal
     exponent = parseInt(state, base10, LeadingChar.AllowZero)
   else:
     state.pushBackChar(nextChar)
-
   let value =
     if intPart <= 0:
       pow(10.0, exponent.float64) * (float64(intPart) - decimalPart)
@@ -779,8 +774,8 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
           else:
             # This must now be a float or a date/time, or a sole 0
             case nextChar:
-              of '.':
-                return parseFloat(state, 0, forcedSign)
+              of '.', 'e':
+                return parseFloat(state, 0, forcedSign, isExp = nextChar == 'e')
               of strutils.Whitespace:
                 state.pushBackChar(nextChar)
                 return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
@@ -793,8 +788,8 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
         else:
           # This must now be a float, or a sole 0
           case nextChar:
-            of '.':
-              return parseFloat(state, 0, forcedSign)
+            of '.', 'e':
+              return parseFloat(state, 0, forcedSign, isExp = nextChar == 'e')
             of strutils.Whitespace:
               state.pushBackChar(nextChar)
               return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
