@@ -117,3 +117,6 @@ array_empty = []
 suite "bug fixes":
   test "issue-45":
     check "some_float = 0.123".parseString()["some_float"].getFloat() == 0.123
+
+  test "issue-56":
+    check "a = [0]".parseString()["a"].getElems()[0].getInt() == 0
