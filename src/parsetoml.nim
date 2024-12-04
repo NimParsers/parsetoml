@@ -781,7 +781,7 @@ proc parseNumOrDate(state: var ParserState): TomlValueRef =
             case nextChar:
               of '.':
                 return parseFloat(state, 0, forcedSign)
-              of strutils.Whitespace:
+              of strutils.Whitespace, ']':
                 state.pushBackChar(nextChar)
                 return TomlValueRef(kind: TomlValueKind.Int, intVal: 0)
               of strutils.Digits:
