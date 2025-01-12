@@ -71,14 +71,14 @@ nim	simpleGetOrDefault	index.html#simpleGetOrDefault.t,TomlValueRef,string	templ
 nim	`{}=`	index.html#{}=,TomlValueRef,varargs[string],TomlValueRef	proc `{}=`(node: TomlValueRef; keys: varargs[string]; value: TomlValueRef)		1896
 nim	delete	index.html#delete,TomlValueRef,string	proc delete(obj: TomlValueRef; key: string)		1906
 nim	copy	index.html#copy,TomlValueRef	proc copy(p: TomlValueRef): TomlValueRef		1913
-nimgrp	hash	index.html#hash-procs-all	proc		1800
-nimgrp	[]	index.html#[]-procs-all	proc		1840
-nimgrp	contains	index.html#contains-procs-all	proc		1860
+nimgrp	?	index.html#?-procs-all	proc		1617
 nimgrp	parsefile	index.html#parseFile-procs-all	proc		1300
 nimgrp	$	index.html#$-procs-all	proc		1322
-nimgrp	?	index.html#?-procs-all	proc		1617
-nimgrp	add	index.html#add-procs-all	proc		1607
 nimgrp	totomlstring	index.html#toTomlString-procs-all	proc		1344
+nimgrp	contains	index.html#contains-procs-all	proc		1860
+nimgrp	[]	index.html#[]-procs-all	proc		1840
 nimgrp	tojson	index.html#toJson-procs-all	proc		1417
+nimgrp	add	index.html#add-procs-all	proc		1607
+nimgrp	hash	index.html#hash-procs-all	proc		1800
 heading	Introduction	index.html#introduction	 Introduction		0
 heading	Source	index.html#source	 Source		0
